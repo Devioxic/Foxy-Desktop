@@ -1,0 +1,97 @@
+import React, { useMemo } from "react";
+import { useNavigate, useLocation } from "react-router-dom";
+import UserProfile from "@/components/UserProfile";
+import { Home, Users, Disc3, ListMusic, Star } from "lucide-react";
+
+interface SidebarProps {
+  activeSection?: string;
+  onSectionChange?: (section: string) => void;
+}
+
+const Sidebar: React.FC<SidebarProps> = React.memo(
+  ({ activeSection, onSectionChange }) => {
+    const navigate = useNavigate();
+    const location = useLocation();
+
+    // Determine active section from URL if not provided
+    const currentActiveSection = useMemo(() => {
+      if (activeSection) return activeSection;
+
+      const path = location.pathname;
+      if (path === "/home" || path === "/dashboard") return "home";
+      if (path === "/library") return "library";
+      if (path === "/search") return "search";
+      if (path === "/artists" || path.startsWith("/artist/")) return "artists";
+      if (path === "/albums" || path.startsWith("/album/")) return "albums";
+      if (path === "/playlist/favourites") return "favourites";
+      if (path === "/playlists" || path.startsWith("/playlist/"))
+        return "playlists";
+      if (path.includes("favourite")) return "favourites";
+      return "home";
+    }, [activeSection, location.pathname]);
+
+    const handleSectionClick = (sectionId: string) => {
+      if (onSectionChange) {
+        onSectionChange(sectionId);
+      }
+
+      // Navigate to the appropriate page
+      if (sectionId === "home") navigate("/home");
+      if (sectionId === "library") navigate("/library");
+      if (sectionId === "artists") navigate("/artists");
+      if (sectionId === "albums") navigate("/albums");
+      if (sectionId === "playlists") navigate("/playlists");
+      if (sectionId === "favourites") {
+        navigate("/favourites");
+      }
+    };
+
+    const navigationItems = useMemo(
+      () => [
+        { id: "home", icon: Home, label: "Home" },
+        { id: "artists", icon: Users, label: "Artists" },
+        { id: "albums", icon: Disc3, label: "Albums" },
+        { id: "playlists", icon: ListMusic, label: "Playlists" },
+        { id: "favourites", icon: Star, label: "Favourite Albums" },
+      ],
+      []
+    );
+
+    return (
+      <div className="fixed left-0 top-0 w-64 h-full bg-white border-r border-gray-200 z-40 flex flex-col">
+        <div className="p-6 flex-1 overflow-y-auto">
+          {/* Logo and Branding */}
+          <div className="flex items-center space-x-3 mb-8">
+            <img src="./Foxy.svg" alt="Foxy" className="w-8 h-8" />
+            <h1 className="text-xl font-bold text-gray-900">Foxy</h1>
+          </div>
+
+          {/* Navigation */}
+          <nav className="space-y-2">
+            {navigationItems.map((item) => (
+              <button
+                key={item.id}
+                onClick={() => handleSectionClick(item.id)}
+                className={`w-full flex items-center space-x-3 px-3 py-2 rounded-lg text-left transition-colors ${
+                  currentActiveSection === item.id
+                    ? "bg-pink-100 text-pink-700"
+                    : "text-gray-700 hover:bg-gray-100"
+                }`}
+              >
+                <item.icon className="w-5 h-5" />
+                <span className="font-medium">{item.label}</span>
+              </button>
+            ))}
+          </nav>
+        </div>
+
+        {/* User Profile */}
+        <div className="border-t border-gray-200">
+          <UserProfile />
+        </div>
+      </div>
+    );
+  }
+);
+
+export default Sidebar;

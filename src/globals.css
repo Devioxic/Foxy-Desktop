@@ -1,0 +1,276 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --background: 0 0% 100%;
+    --foreground: 224 71.4% 4.1%;
+    --card: 0 0% 100%;
+    --card-foreground: 224 71.4% 4.1%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 224 71.4% 4.1%;
+    --primary: 330 81% 60%;
+    --primary-foreground: 210 20% 98%;
+    --secondary: 220 14.3% 95.9%;
+    --secondary-foreground: 220.9 39.3% 11%;
+    --muted: 220 14.3% 95.9%;
+    --muted-foreground: 220 8.9% 46.1%;
+    --accent: 220 14.3% 95.9%;
+    --accent-foreground: 220.9 39.3% 11%;
+    --destructive: 0 84.2% 60.2%;
+    --destructive-foreground: 210 20% 98%;
+    --border: 220 13% 91%;
+    --input: 220 13% 91%;
+    --ring: 330 81% 60%;
+    --radius: 0.5rem;
+  }
+
+  .dark {
+    --background: 224 71.4% 4.1%;
+    --foreground: 210 20% 98%;
+    --card: 224 71.4% 4.1%;
+    --card-foreground: 210 20% 98%;
+    --popover: 224 71.4% 4.1%;
+    --popover-foreground: 210 20% 98%;
+    --primary: 330 81% 65%;
+    --primary-foreground: 210 20% 98%;
+    --secondary: 215 27.9% 16.9%;
+    --secondary-foreground: 210 20% 98%;
+    --muted: 215 27.9% 16.9%;
+    --muted-foreground: 217.9 10.6% 64.9%;
+    --accent: 215 27.9% 16.9%;
+    --accent-foreground: 210 20% 98%;
+    --destructive: 0 62.8% 30.6%;
+    --destructive-foreground: 210 20% 98%;
+    --border: 215 27.9% 16.9%;
+    --input: 215 27.9% 16.9%;
+    --ring: 330 81% 65%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  body {
+    @apply bg-background text-foreground;
+  }
+
+  /* Typography scale implementation */
+  h1 {
+    @apply text-[2.875rem] font-bold leading-[1.2] tracking-[-0.02em];
+  }
+
+  h2 {
+    @apply text-[2.3125rem] font-bold leading-[1.2] tracking-[-0.02em];
+  }
+
+  h3 {
+    @apply text-[1.875rem] font-semibold leading-[1.2];
+  }
+
+  h4 {
+    @apply text-[1.5rem] font-semibold leading-[1.2];
+  }
+
+  p {
+    @apply text-[1.125rem] font-normal leading-[1.5];
+  }
+
+  .text-body {
+    @apply text-[1.125rem] font-normal leading-[1.5];
+  }
+
+  .text-small {
+    @apply text-[0.9375rem] font-light leading-[1.4];
+  }
+
+  .text-caption {
+    @apply text-[0.75rem] font-light leading-[1.4] tracking-[0.05em] uppercase;
+  }
+
+  .text-ui {
+    @apply text-[1rem] font-medium leading-[1.4];
+  }
+}
+
+@layer components {
+  /* Button component standards */
+  .btn {
+    @apply font-semibold transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-offset-2 disabled:opacity-50;
+  }
+
+  .btn-sm {
+    @apply h-8 px-3 text-sm rounded-md;
+  }
+
+  .btn-md {
+    @apply h-10 px-4 text-base rounded-lg;
+  }
+
+  .btn-lg {
+    @apply h-12 px-6 text-lg rounded-xl;
+  }
+
+  .btn-primary {
+    @apply bg-primary-500 hover:bg-primary-600 text-white focus:ring-primary-300;
+  }
+
+  .btn-secondary {
+    @apply bg-secondary-500 hover:bg-secondary-600 text-white focus:ring-secondary-300;
+  }
+
+  /* Input component standards */
+  .input {
+    @apply w-full border border-neutral-300 bg-white rounded-lg shadow-sm focus:outline-none focus:border-transparent transition-all;
+    &:focus {
+      box-shadow: 0 0 0 2px hsl(var(--primary));
+    }
+  }
+
+  .input-sm {
+    @apply h-8 px-2.5 py-1.5 text-sm;
+  }
+
+  .input-md {
+    @apply h-10 px-3 py-2 text-base;
+  }
+
+  .input-lg {
+    @apply h-12 px-4 py-2.5 text-lg;
+  }
+
+  /* Card component standards */
+  .card {
+    @apply bg-white border border-neutral-200 rounded-xl shadow-sm overflow-hidden;
+  }
+
+  /* Grid system */
+  .grid-system {
+    @apply grid grid-cols-12 gap-4 max-w-7xl mx-auto px-4;
+  }
+
+  /* Custom Music Player Slider */
+  .music-player-slider [data-orientation="horizontal"] {
+    @apply h-1;
+  }
+
+  .music-player-slider .relative {
+    @apply h-1;
+  }
+
+  .music-player-slider .absolute {
+    @apply h-1 bg-gray-300 group-hover:bg-pink-300 transition-colors;
+  }
+
+  .music-player-slider [data-orientation="horizontal"] > span {
+    @apply opacity-0 group-hover:opacity-100 transition-opacity duration-200 bg-gray-700 border border-gray-200 group-hover:bg-pink-600 group-hover:border-pink-400;
+  }
+}
+
+/* Custom scrollbar styles for lyrics component */
+.lyrics-scroll::-webkit-scrollbar {
+  width: 6px;
+}
+
+.lyrics-scroll::-webkit-scrollbar-track {
+  background: #f1f5f9;
+  border-radius: 3px;
+}
+
+.lyrics-scroll::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 10px;
+}
+
+.lyrics-scroll::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8;
+}
+
+/* Enhanced shimmer animation for loading skeletons */
+@keyframes shimmer {
+  0% {
+    background-position: -200% 0;
+  }
+  100% {
+    background-position: 200% 0;
+  }
+}
+
+.animate-shimmer {
+  background: linear-gradient(
+    90deg,
+    hsl(var(--secondary)) 25%,
+    hsl(var(--muted)) 50%,
+    hsl(var(--secondary)) 75%
+  );
+  background-size: 200% 100%;
+  animation: shimmer 1.5s ease-in-out infinite;
+}
+
+/* Equalizer (now playing) animation */
+@keyframes equalizer-bar {
+  0% {
+    transform: scaleY(0.3);
+  }
+  10% {
+    transform: scaleY(0.8);
+  }
+  20% {
+    transform: scaleY(0.4);
+  }
+  30% {
+    transform: scaleY(1);
+  }
+  40% {
+    transform: scaleY(0.5);
+  }
+  50% {
+    transform: scaleY(0.9);
+  }
+  60% {
+    transform: scaleY(0.35);
+  }
+  70% {
+    transform: scaleY(0.7);
+  }
+  80% {
+    transform: scaleY(0.45);
+  }
+  90% {
+    transform: scaleY(0.85);
+  }
+  100% {
+    transform: scaleY(0.6);
+  }
+}
+.equalizer {
+  display: inline-flex;
+  align-items: flex-end;
+  gap: 2px;
+  height: 12px;
+}
+.equalizer-bar {
+  width: 2px;
+  height: 100%;
+  background-color: hsl(var(--ring));
+  border-radius: 1px;
+  transform-origin: bottom;
+  animation: equalizer-bar 1.6s ease-in-out infinite;
+}
+.equalizer-bar:nth-child(1) {
+  animation-duration: 1.8s;
+}
+.equalizer-bar:nth-child(2) {
+  animation-duration: 1.95s;
+  animation-delay: 0.3s;
+}
+.equalizer-bar:nth-child(3) {
+  animation-duration: 1.85s;
+  animation-delay: 0.6s;
+}
+.equalizer.paused .equalizer-bar {
+  animation-play-state: paused;
+  opacity: 0.6;
+}
