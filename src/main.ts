@@ -17,6 +17,7 @@ const createWindow = async () => {
       nodeIntegration: false,
       sandbox: false,
     },
+    autoHideMenuBar: true,
   });
 
   const devServerUrl =
@@ -40,6 +41,8 @@ const createWindow = async () => {
     shell.openExternal(url);
     return { action: "deny" };
   });
+
+  win.setMenu(null); // Hide the menu bar
 };
 
 app.whenReady().then(async () => {
