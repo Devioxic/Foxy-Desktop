@@ -18,6 +18,7 @@ const createWindow = async () => {
       sandbox: false,
     },
     autoHideMenuBar: true,
+    icon: path.join(__dirname, "../public/icon.png"),
   });
 
   const devServerUrl =

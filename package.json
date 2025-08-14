@@ -46,6 +46,7 @@
     "vite": "^5.4.19"
   },
   "dependencies": {
+    "@electron-forge/maker-dmg": "^7.8.3",
     "@hookform/resolvers": "^3.10.0",
     "@jellyfin/sdk": "^0.11.0",
     "@radix-ui/react-accordion": "^1.2.12",
