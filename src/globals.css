@@ -51,10 +51,11 @@
 
 @layer base {
   * {
-    @apply border-border;
+    border-color: hsl(var(--border));
   }
   body {
-    @apply bg-background text-foreground;
+    background-color: hsl(var(--background));
+    color: hsl(var(--foreground));
   }
 
   /* Typography scale implementation */
@@ -114,11 +115,19 @@
   }
 
   .btn-primary {
-    @apply bg-primary-500 hover:bg-primary-600 text-white focus:ring-primary-300;
+    background-color: hsl(var(--primary));
+    color: white;
+  }
+  .btn-primary:hover {
+    filter: brightness(0.95);
   }
 
   .btn-secondary {
-    @apply bg-secondary-500 hover:bg-secondary-600 text-white focus:ring-secondary-300;
+    background-color: hsl(var(--secondary));
+    color: white;
+  }
+  .btn-secondary:hover {
+    filter: brightness(0.95);
   }
 
   /* Input component standards */

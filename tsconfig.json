@@ -10,6 +10,12 @@
     "baseUrl": ".",
     "outDir": "dist",
     "moduleResolution": "node",
-    "resolveJsonModule": true
-  }
+    "resolveJsonModule": true,
+    "jsx": "react-jsx",
+    "lib": ["ESNext", "DOM"],
+    "paths": {
+      "@/*": ["src/*"]
+    }
+  },
+  "include": ["src", "vite.*.config.ts", "forge.config.ts"]
 }

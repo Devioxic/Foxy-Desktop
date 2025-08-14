@@ -1,4 +1,14 @@
-import { defineConfig } from 'vite';
+import { defineConfig } from "vite";
 
-// https://vitejs.dev/config
-export default defineConfig({});
+export default defineConfig({
+  build: {
+    lib: {
+      entry: "src/main.ts",
+      formats: ["cjs"],
+    },
+    outDir: ".vite/build",
+    rollupOptions: {
+      external: ["electron"],
+    },
+  },
+});
