@@ -152,7 +152,6 @@ const LoginPage = () => {
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 className="text-base h-12 rounded-xl bg-white/60 border-pink-200 focus:ring-2 focus:ring-pink-300"
-                required
               />
             </div>
 

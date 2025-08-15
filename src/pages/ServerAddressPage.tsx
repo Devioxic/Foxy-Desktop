@@ -11,11 +11,46 @@ import { showError, showSuccess } from "@/utils/toast";
 const guessAddressVariants = (raw: string) => {
   const trimmed = raw.trim();
   if (!trimmed) return [] as string[];
-  // If user already typed protocol (optionally with port/path) assume it's full
-  if (/^https?:\/\//i.test(trimmed)) return [trimmed.replace(/\/$/, "")];
-  const host = trimmed.replace(/\/$/, "");
-  // Try HTTPS first then HTTP (user can manually include port if needed)
-  return Array.from(new Set([`https://${host}`, `http://${host}`]));
+
+  const ensureStableForDemo = (urlStr: string) => {
+    try {
+      const u = new URL(urlStr);
+      // Append /stable for demo.jellyfin.org only when no explicit port and no path provided
+      if (u.hostname === "demo.jellyfin.org" && !u.port) {
+        if (!u.pathname || u.pathname === "/") {
+          u.pathname = "/stable";
+        }
+      }
+      // Normalize: drop trailing slash
+      return u.toString().replace(/\/$/, "");
+    } catch {
+      return urlStr.replace(/\/$/, "");
+    }
+  };
+
+  // If user already typed protocol (optionally with port/path) handle directly
+  if (/^https?:\/\//i.test(trimmed)) {
+    return [ensureStableForDemo(trimmed)];
+  }
+
+  // No protocol: split potential path from host
+  const noSlash = trimmed.replace(/\/$/, "");
+  const [hostPart, ...pathParts] = noSlash.split("/");
+  const hasPath = pathParts.length > 0 && pathParts.join("/").length > 0;
+
+  const candidates = [`https://${noSlash}`, `http://${noSlash}`];
+
+  // If host is demo.jellyfin.org with no explicit port and no path, append /stable
+  if (hostPart === "demo.jellyfin.org" && !hostPart.includes(":") && !hasPath) {
+    return Array.from(
+      new Set([
+        ensureStableForDemo(`https://${hostPart}`),
+        ensureStableForDemo(`http://${hostPart}`),
+      ])
+    );
+  }
+
+  return Array.from(new Set(candidates.map(ensureStableForDemo)));
 };
 
 const ServerAddressPage = () => {
@@ -67,7 +102,7 @@ const ServerAddressPage = () => {
       }
     }
     const message =
-      "Could not validate server. Check host or that Jellyfin is running."; // removed port mention
+      "Could not validate server. Check host or that Jellyfin is running.";
     if (!silent) showError(message);
     setStatus({ state: "error", message });
     return undefined;
@@ -111,15 +146,12 @@ const ServerAddressPage = () => {
             </Label>
             <Input
               id="server"
-              placeholder="demo.jellyfin.org"
+              placeholder="demo.jellyfin.org/stable"
               value={rawInput}
               onChange={(e) => setRawInput(e.target.value)}
               className="h-12 rounded-xl bg-white/70 border-pink-200 focus:ring-2 focus:ring-pink-300"
               autoFocus
             />
-            <p className="text-xs text-pink-700/70">
-              You can omit protocol; we'll try HTTPS then HTTP automatically.
-            </p>
           </div>
 
           {status.state === "error" && (
