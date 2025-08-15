@@ -17,16 +17,35 @@ jobs:
       - name: Install Node.js, NPM and Yarn
         uses: actions/setup-node@v4
         with:
-          node-version: '23'
+          node-version: "23"
 
-      - name: Build/release Electron app
+      - name: Set up keychain
+        if: startsWith(matrix.os, 'macos')
+        env:
+          KEYCHAIN: ${{ secrets.KEYCHAIN }}
+          KEYCHAINPASSWORD: ${{ secrets.KEYCHAINPASSWORD }}
+        run: |
+          echo "$KEYCHAIN" | base64 --decode > cert.p12
+          security create-keychain -p "" build.keychain
+          security import cert.p12 -k build.keychain -P "$KEYCHAINPASSWORD" -T /usr/bin/codesign
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "" build.keychain
+
+      - name: Store notarization credentials
         env:
           APPLEID: ${{ secrets.APPLEID }}
           APPLEIDPASSWORD: ${{ secrets.APPLEIDPASSWORD }}
           TEAMID: ${{ secrets.TEAMID }}
         run: |
+          xcrun notarytool store-credentials "Foxy" \
+          --apple-id "$APPLEID" \
+          --team-id "$TEAMID" \
+          --password "$APPLEIDPASSWORD"
+
+      - name: Build/release Electron app
+        env:
+          IDENTITY: ${{ secrets.IDENTITY }}
+        run: |
           npm install
-          npm run package
           npm run make
 
       - name: Upload build artifacts

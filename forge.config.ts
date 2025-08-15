@@ -8,19 +8,20 @@ import { FuseV1Options, FuseVersion } from "@electron/fuses";
 
 const config: ForgeConfig = {
   packagerConfig: {
-    asar: true,
+    asar: {
+        unpack: "**/*.{node,sqlite,db}"
+    },
     icon: "public/icon",
     osxSign: {
         optionsForFile: (filepath) => {
             return {
                 "entitlements": "public/entitlements.plist"
             };
-        }
+        },
+        identity: process.env.IDENTITY
     },
     osxNotarize: {
-      appleId: process.env.APPLE_ID,
-      appleIdPassword: process.env.APPLEIDPASSWORD,
-      teamId: process.env.TEAMID,
+      keychainProfile: "Foxy",
     }
   },
   rebuildConfig: {},
