@@ -28,3 +28,11 @@ jobs:
           npm install
           npm run package
           npm run make
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: electron-build-${{ matrix.os }}
+          path: |
+            out/**/*
+            dist/**/*
