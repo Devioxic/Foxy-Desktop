@@ -6,6 +6,7 @@ import { useLocation, useNavigate } from "react-router-dom";
 import { showError, showSuccess } from "@/utils/toast";
 import { Loader2, Copy, Check } from "lucide-react";
 import { authenticate } from "@/lib/jellyfin";
+import { useMusicPlayer } from "@/contexts/MusicContext";
 
 const LoginPage = () => {
   const location = useLocation();
@@ -22,6 +23,21 @@ const LoginPage = () => {
   const [copied, setCopied] = useState(false);
   const stopPollingRef = useRef<() => void>(() => {});
   const navigate = useNavigate();
+  const { clearQueue } = useMusicPlayer();
+
+  const maybeClearNowPlaying = (newServer: string) => {
+    try {
+      const prevAuth = JSON.parse(localStorage.getItem("authData") || "{}");
+      const prevServer = prevAuth?.serverAddress as string | undefined;
+      if (prevServer && prevServer !== newServer) {
+        // Clear persisted and in-memory now playing state when switching servers
+        localStorage.removeItem("savedQueue");
+        try {
+          clearQueue();
+        } catch {}
+      }
+    } catch {}
+  };
 
   // Automatically start Quick Connect on component mount
   useEffect(() => {
@@ -48,6 +64,8 @@ const LoginPage = () => {
           },
           onSuccess: (authData) => {
             showSuccess("Quick Connect successful!");
+            // If signing into a different server, clear saved now playing state
+            maybeClearNowPlaying(authData.serverAddress);
             localStorage.setItem("authData", JSON.stringify(authData));
             navigate("/home");
           },
@@ -76,6 +94,8 @@ const LoginPage = () => {
         password
       );
       showSuccess("Login successful");
+      // If signing into a different server, clear saved now playing state
+      maybeClearNowPlaying(authData.serverAddress);
       localStorage.setItem("authData", JSON.stringify(authData));
       navigate("/home");
     } catch (error) {
@@ -105,20 +125,7 @@ const LoginPage = () => {
       <div className="w-full max-w-md">
         <div className="text-center mb-10">
           <div className="bg-gradient-to-br from-pink-200/80 to-rose-300/80 w-20 h-20 rounded-2xl mx-auto flex items-center justify-center shadow-lg backdrop-blur-sm border border-white/50 mb-6">
-            <svg
-              xmlns="http://www.w3.org/2000/svg"
-              className="w-10 h-10 text-pink-600"
-              fill="none"
-              viewBox="0 0 24 24"
-              stroke="currentColor"
-              strokeWidth="1.5"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z"
-              />
-            </svg>
+            <img src="./Foxy.svg" alt="Foxy" className="w-14 h-14" />
           </div>
           <h1 className="text-3xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-pink-600 to-rose-600 mb-2">
             Foxy
@@ -262,7 +269,7 @@ const LoginPage = () => {
         </div>
 
         <div className="mt-8 text-center text-pink-600/70 text-sm">
-          <p>Foxy Player v1.0</p>
+          <p>Foxy Desktop v0.8.3 RC-1</p>
         </div>
       </div>
     </div>
