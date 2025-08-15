@@ -4,6 +4,7 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { validateServer } from "@/lib/jellyfin";
+import { syncService } from "@/lib/sync";
 import { showError, showSuccess } from "@/utils/toast";
 
 // Removed DEFAULT_PORTS; we now only try protocol variants without explicit ports
@@ -86,6 +87,18 @@ const ServerAddressPage = () => {
       try {
         const res = await validateServer(candidate);
         if (res.valid) {
+          // If the server changed (and this isn't a silent pre-validate), clear local DB
+          const prev = localStorage.getItem("jellyfinServer");
+          const serverChanged = prev && prev !== candidate;
+          if (!silent && serverChanged) {
+            try {
+              await syncService.abortSync();
+            } catch (_) {
+              // ignore
+            }
+            await syncService.clearDatabase();
+          }
+
           localStorage.setItem("jellyfinServer", candidate);
           localStorage.setItem("jellyfinServerRaw", rawInput);
           if (!silent) showSuccess(`Connected to ${res.name || "server"}`);
