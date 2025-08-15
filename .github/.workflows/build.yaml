@@ -1,0 +1,30 @@
+name: Build/release
+
+on: push
+
+jobs:
+  release:
+    runs-on: ${{ matrix.os }}
+
+    strategy:
+      matrix:
+        os: [macos-latest, ubuntu-latest, windows-latest]
+
+    steps:
+      - name: Check out Git repository
+        uses: actions/checkout@v5
+
+      - name: Install Node.js, NPM and Yarn
+        uses: actions/setup-node@v4
+        with:
+          node-version: '23'
+
+      - name: Build/release Electron app
+        env:
+          APPLEID: ${{ secrets.APPLEID }}
+          APPLEIDPASSWORD: ${{ secrets.APPLEIDPASSWORD }}
+          TEAMID: ${{ secrets.TEAMID }}
+        run: |
+          npm install
+          npm run package
+          npm run make

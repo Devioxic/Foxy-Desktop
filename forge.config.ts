@@ -9,11 +9,24 @@ import { FuseV1Options, FuseVersion } from "@electron/fuses";
 const config: ForgeConfig = {
   packagerConfig: {
     asar: true,
-    icon: "public/icon"
+    icon: "public/icon",
+    osxSign: {
+        optionsForFile: (filepath) => {
+            return {
+                "entitlements": "public/entitlements.plist"
+            };
+        }
+    },
+    osxNotarize: {
+      appleId: process.env.APPLE_ID,
+      appleIdPassword: process.env.APPLEIDPASSWORD,
+      teamId: process.env.TEAMID,
+    }
   },
   rebuildConfig: {},
   makers: [
     new MakerSquirrel({
+        iconUrl: "https://raw.githubusercontent.com/Devioxic/Foxy-Desktop/refs/heads/master/public/icon%400.5x.ico",
         setupIcon: "public/icon.ico",
     }),
     new MakerDMG({
