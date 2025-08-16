@@ -8,7 +8,7 @@ jobs:
 
     strategy:
       matrix:
-        os: [ubuntu-latest, windows-latest]
+        os: [ubuntu-latest, windows-latest, macos-latest]
 
     steps:
       - name: Check out Git repository
@@ -29,6 +29,8 @@ jobs:
           security create-keychain -p "" build.keychain
           security import cert.p12 -k build.keychain -P "$KEYCHAINPASSWORD" -T /usr/bin/codesign
           security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "" build.keychain
+          security unlock-keychain -p "" build.keychain
+          security default-keychain -s build.keychain
 
       - name: Store notarization credentials
         env:
