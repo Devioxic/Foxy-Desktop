@@ -269,7 +269,7 @@ const LoginPage = () => {
         </div>
 
         <div className="mt-8 text-center text-pink-600/70 text-sm">
-          <p>Foxy Desktop v0.8.3 RC-1</p>
+          <p>Foxy Desktop v0.8.9</p>
         </div>
       </div>
     </div>

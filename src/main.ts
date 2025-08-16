@@ -1,5 +1,6 @@
-import { app, BrowserWindow, shell } from "electron";
+import { app, BrowserWindow, shell, ipcMain } from "electron";
 import * as path from "path";
+import * as fs from "fs";
 
 // These are injected by @electron-forge/plugin-vite at build/dev time
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
@@ -47,6 +48,32 @@ const createWindow = async () => {
 };
 
 app.whenReady().then(async () => {
+  // IPC for database persistence
+  const dbPath = path.join(app.getPath("userData"), "foxy.sqlite");
+  ipcMain.handle("db:save", async (_evt, data: ArrayBuffer) => {
+    try {
+      // Ensure userData dir exists (it always should) and write atomically
+      const tmp = `${dbPath}.tmp`;
+      await fs.promises.writeFile(tmp, Buffer.from(data));
+      await fs.promises.rename(tmp, dbPath);
+      return true;
+    } catch (e) {
+      console.error("Main: db:save failed", e);
+      throw e;
+    }
+  });
+  ipcMain.handle("db:load", async () => {
+    try {
+      const exists = fs.existsSync(dbPath);
+      if (!exists) return null;
+      const buf = await fs.promises.readFile(dbPath);
+      return buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength);
+    } catch (e) {
+      console.error("Main: db:load failed", e);
+      return null;
+    }
+  });
+
   await createWindow();
 
   app.on("activate", () => {

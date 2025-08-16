@@ -1,5 +1,9 @@
 import initSqlJs, { Database } from "sql.js";
 import localforage from "localforage";
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-ignore - Vite adds the `?url` importer at build-time
+// eslint-disable-next-line import/no-unresolved
+import wasmUrl from "sql.js/dist/sql-wasm.wasm?url";
 import { BaseItemDto } from "@jellyfin/sdk/lib/generated-client/models";
 
 // Database schema
@@ -144,7 +148,6 @@ class LocalDatabase {
     try {
       console.log("Database: Starting initialization...");
 
-      const isDev = import.meta.env.DEV;
       const isElectron = !!(
         typeof window !== "undefined" &&
         (window as any).process?.versions?.electron
@@ -156,18 +159,13 @@ class LocalDatabase {
         try {
           this.sqlJs = await initSqlJs({
             locateFile: (file) => {
-              // Development: use CDN (fast, avoids CORS issues with Vite dev)
-              if (isDev) {
-                console.log(`Database: (dev) loading wasm from CDN: ${file}`);
-                return `https://sql.js.org/dist/${file}`;
+              // sql.js only asks for `sql-wasm.wasm`; return the Vite-managed asset URL.
+              if (file.endsWith(".wasm")) {
+                console.log("Database: using bundled wasm asset:", wasmUrl);
+                return wasmUrl as unknown as string;
               }
-              // Production (Electron / static build): use relative path so file:// works.
-              // We expect sql-wasm.wasm to be copied into the final dist root (same folder as index.html)
-              const rel = `./${file}`;
-              console.log(
-                `Database: (prod) attempting relative wasm path: ${rel} (electron=${isElectron})`
-              );
-              return rel;
+              // Fallback: return as-is (should not be needed)
+              return file;
             },
           });
           console.log("Database: SQL.js initialized");
@@ -188,8 +186,8 @@ class LocalDatabase {
         }
       }
 
-      // Try to load existing database from localforage
-      const savedDb = await localforage.getItem<Uint8Array>("jellyfinDatabase");
+      // Try to load existing database from storage (Electron file > localforage)
+      const savedDb = await this.loadPersistedDatabase();
 
       if (savedDb) {
         this.db = new this.sqlJs.Database(savedDb);
@@ -221,9 +219,46 @@ class LocalDatabase {
 
     try {
       const data = this.db.export();
-      await localforage.setItem("jellyfinDatabase", data);
+      const isElectron = !!(
+        typeof window !== "undefined" &&
+        (window as any).process?.versions?.electron
+      );
+      if (isElectron && (window as any).electronAPI?.dbSave) {
+        await (window as any).electronAPI.dbSave(data);
+      } else {
+        await localforage.setItem("jellyfinDatabase", data);
+      }
     } catch (error) {
       console.error("Failed to save database:", error);
+    }
+  }
+
+  private async loadPersistedDatabase(): Promise<Uint8Array | null> {
+    try {
+      const isElectron = !!(
+        typeof window !== "undefined" &&
+        (window as any).process?.versions?.electron
+      );
+      if (isElectron && (window as any).electronAPI?.dbLoad) {
+        const buf: ArrayBuffer | null = await (
+          window as any
+        ).electronAPI.dbLoad();
+        if (buf && buf.byteLength > 0) {
+          return new Uint8Array(buf);
+        }
+      }
+    } catch (e) {
+      console.warn(
+        "Database: Electron dbLoad failed, falling back to localforage",
+        e
+      );
+    }
+    try {
+      const saved = await localforage.getItem<Uint8Array>("jellyfinDatabase");
+      return saved || null;
+    } catch (e) {
+      console.warn("Database: localforage load failed", e);
+      return null;
     }
   }
 

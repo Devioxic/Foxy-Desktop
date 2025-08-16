@@ -1,7 +1,8 @@
 /// <reference types="vite/client" />
 
 interface ElectronAPI {
-  ping: () => Promise<string>;
+  dbSave: (data: Uint8Array | ArrayBuffer) => Promise<void>;
+  dbLoad: () => Promise<ArrayBuffer | null>;
 }
 
 declare global {

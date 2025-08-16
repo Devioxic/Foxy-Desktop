@@ -1,8 +1,8 @@
 {
   "name": "foxy",
   "productName": "foxy",
-  "version": "0.8.3",
-  "description": "My Electron application description",
+  "version": "0.8.9",
+  "description": "Jellyfin music player for desktop",
   "main": ".vite/build/foxy.js",
   "scripts": {
     "start": "electron-forge start",
@@ -16,7 +16,7 @@
     "name": "Tilly Persson",
     "email": "tilly@tillycloud.com"
   },
-  "license": "MIT",
+  "license": "AGPL-3.0-only",
   "devDependencies": {
     "@electron-forge/cli": "^7.8.3",
     "@electron-forge/maker-deb": "^7.8.3",
