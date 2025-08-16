@@ -13,12 +13,13 @@ import {
   getFavorites,
   getRecentlyPlayedAlbums,
 } from "@/lib/jellyfin";
+import { getAlbumItems } from "@/lib/jellyfin";
 import AlbumCard from "@/components/AlbumCard";
 import LoadingSkeleton from "@/components/LoadingSkeleton";
 
 const Dashboard = () => {
   const navigate = useNavigate();
-  const { playNow, addToQueue } = useMusicPlayer();
+  const { playNow, addToQueue, playQueue } = useMusicPlayer();
   const [recentlyPlayed, setRecentlyPlayed] = useState<any[]>([]);
   const [recentlyAdded, setRecentlyAdded] = useState<any[]>([]);
   const [favorites, setFavorites] = useState<any[]>([]);
@@ -136,9 +137,21 @@ const Dashboard = () => {
                           <div className="px-4 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0">
                             <Button
                               size="sm"
-                              onClick={(e) => {
+                              onClick={async (e) => {
                                 e.stopPropagation();
-                                navigate(`/album/${item.Id}`);
+                                try {
+                                  const res = await getAlbumItems(
+                                    authData.serverAddress,
+                                    authData.accessToken,
+                                    item.Id
+                                  );
+                                  const tracks = res?.Items || [];
+                                  if (tracks.length) {
+                                    playQueue(tracks as any[], 0);
+                                  }
+                                } catch (err) {
+                                  console.error("Failed to play album", err);
+                                }
                               }}
                               className="rounded-full w-10 h-10 bg-pink-600 hover:bg-pink-700"
                             >

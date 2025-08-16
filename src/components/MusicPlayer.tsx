@@ -351,16 +351,6 @@ const MusicPlayer: React.FC<MusicPlayerProps> = ({
               </button>
             </div>
             <div className="flex items-center gap-2 flex-shrink-0">
-              {isPlaying && (
-                <div
-                  className={`equalizer ${isPaused ? "paused" : ""}`}
-                  aria-label="Now playing"
-                >
-                  <span className="equalizer-bar" />
-                  <span className="equalizer-bar" />
-                  <span className="equalizer-bar" />
-                </div>
-              )}
               <div className="flex items-center gap-1">
                 <Button
                   variant="ghost"
