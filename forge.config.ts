@@ -8,9 +8,7 @@ import { FuseV1Options, FuseVersion } from "@electron/fuses";
 
 const config: ForgeConfig = {
   packagerConfig: {
-    asar: {
-        unpack: "**/*.{node,sqlite,db}"
-    },
+    asar: true,
     icon: "public/icon",
     osxSign: {
         optionsForFile: (filepath) => {
@@ -22,7 +20,9 @@ const config: ForgeConfig = {
     },
     osxNotarize: {
       keychainProfile: "Foxy",
-    }
+    },
+    executableName: "foxy",
+    appBundleId: "com.tillycloud.foxydesktop",
   },
   rebuildConfig: {},
   makers: [
