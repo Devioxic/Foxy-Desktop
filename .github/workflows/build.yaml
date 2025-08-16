@@ -33,6 +33,7 @@ jobs:
           security default-keychain -s build.keychain
 
       - name: Store notarization credentials
+        if: startsWith(matrix.os, 'macos')
         env:
           APPLEID: ${{ secrets.APPLEID }}
           APPLEIDPASSWORD: ${{ secrets.APPLEIDPASSWORD }}
