@@ -90,3 +90,6 @@ typings/
 
 # Electron-Forge
 out/
+
+# package-lock.json
+package-lock.json
