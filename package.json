@@ -1,6 +1,6 @@
 {
   "name": "foxy",
-  "productName": "foxy",
+  "productName": "Foxy Desktop",
   "version": "1.0.0",
   "description": "Jellyfin music player for desktop",
   "main": ".vite/build/foxy.js",
