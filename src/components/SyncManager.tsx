@@ -7,6 +7,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import { logger } from "@/lib/logger";
 import { Progress } from "@/components/ui/progress";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -93,7 +94,7 @@ export default function SyncManager({ onSyncComplete }: SyncManagerProps) {
         setLastSyncTime(new Date(status.lastFullSync).toLocaleString());
       }
     } catch (error) {
-      console.error("Failed to load sync status:", error);
+      logger.error("Failed to load sync status:", error);
       setError("Failed to load sync status");
     }
   };
@@ -172,7 +173,7 @@ export default function SyncManager({ onSyncComplete }: SyncManagerProps) {
       setIsSyncing(false);
       setSyncProgress(null);
     } catch (error) {
-      console.error("Failed to abort sync:", error);
+      logger.error("Failed to abort sync:", error);
     }
   };
 

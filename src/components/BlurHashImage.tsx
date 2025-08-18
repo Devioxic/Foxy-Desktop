@@ -1,4 +1,5 @@
-import React, { useState, useRef, useEffect } from "react";
+import React, { useEffect, useRef, useState } from "react";
+import { logger } from "@/lib/logger";
 import { decode } from "blurhash";
 
 interface BlurHashImageProps {
@@ -46,7 +47,7 @@ const BlurHashImage: React.FC<BlurHashImageProps> = ({
       ctx.putImageData(imageData, 0, 0);
       // Smooth upscale via CSS sizing
     } catch (error) {
-      console.warn("Failed to decode blur hash:", error);
+      logger.warn("Failed to decode blur hash:", error);
     }
   }, [blurHash, width, height, dpr]);
 

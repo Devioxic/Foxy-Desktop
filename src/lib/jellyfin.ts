@@ -1,4 +1,5 @@
 import { Jellyfin } from "@jellyfin/sdk";
+import { logger } from "./logger";
 import { getSystemApi } from "@jellyfin/sdk/lib/utils/api/system-api";
 import { getQuickConnectApi } from "@jellyfin/sdk/lib/utils/api/quick-connect-api";
 import { getLibraryApi } from "@jellyfin/sdk/lib/utils/api/library-api";
@@ -81,7 +82,8 @@ export const authenticate = {
     try {
       const users = await this.getPublicUsers(serverAddress);
       const user = users.find(
-        (u) => (u.Name || "").toLowerCase() === username.toLowerCase()
+        (u: { Name?: string }) =>
+          (u.Name || "").toLowerCase() === username.toLowerCase()
       );
       return !!user?.HasPassword; // false means passwordless login allowed
     } catch {
@@ -268,7 +270,7 @@ export const getRecentlyPlayed = async (
   try {
     parentId = await getMusicLibraryId(serverAddress, accessToken);
   } catch (error) {
-    console.warn("Could not get music library ID, using general filter");
+    logger.warn("Could not get music library ID, using general filter");
   }
 
   const response = await itemsApi.getItems({
@@ -327,7 +329,7 @@ export const getRecentlyPlayedAlbums = async (
 
     return Array.from(albumMap.values());
   } catch (e) {
-    console.error("Failed to get recently played albums", e);
+    logger.error("Failed to get recently played albums", e);
     return [];
   }
 };
@@ -345,7 +347,7 @@ export const getRecentlyAdded = async (
   try {
     parentId = await getMusicLibraryId(serverAddress, accessToken);
   } catch (error) {
-    console.warn("Could not get music library ID, using general filter");
+    logger.warn("Could not get music library ID, using general filter");
   }
 
   const response = await itemsApi.getItems({
@@ -578,7 +580,7 @@ export const getAudioStreamInfo = async (
         : null,
     };
   } catch (error) {
-    console.error("Error getting audio stream info:", error);
+    logger.error("Error getting audio stream info:", error);
     throw error;
   }
 };
@@ -605,7 +607,7 @@ export const getAlbumInfo = async (
 
     return response.data.Items?.[0] || null;
   } catch (error) {
-    console.error("Error getting album info:", error);
+    logger.error("Error getting album info:", error);
     throw error;
   }
 };
@@ -635,7 +637,7 @@ export const getAlbumItems = async (
 
     return response.data;
   } catch (error) {
-    console.error("Error getting album items:", error);
+    logger.error("Error getting album items:", error);
     throw error;
   }
 };
@@ -674,7 +676,7 @@ export const searchItems = async (
 
     return response.data.Items || [];
   } catch (error) {
-    console.error("Error searching items:", error);
+    logger.error("Error searching items:", error);
     throw error;
   }
 };
@@ -735,7 +737,7 @@ export const searchAllItems = async (searchTerm: string) => {
               limit: 50,
               enableTotalRecordCount: false,
             })
-            .catch(() => ({ data: { Items: [] } })),
+            .catch(() => ({ data: { Items: [] as any[] } })),
 
           // Search albums
           itemsApi
@@ -748,7 +750,7 @@ export const searchAllItems = async (searchTerm: string) => {
               limit: 100,
               enableTotalRecordCount: false,
             })
-            .catch(() => ({ data: { Items: [] } })),
+            .catch(() => ({ data: { Items: [] as any[] } })),
 
           // Search songs
           itemsApi
@@ -764,7 +766,7 @@ export const searchAllItems = async (searchTerm: string) => {
               limit: 100,
               enableTotalRecordCount: false,
             })
-            .catch(() => ({ data: { Items: [] } })),
+            .catch(() => ({ data: { Items: [] as any[] } })),
 
           // Search playlists
           itemsApi
@@ -777,7 +779,7 @@ export const searchAllItems = async (searchTerm: string) => {
               limit: 50,
               enableTotalRecordCount: false,
             })
-            .catch(() => ({ data: { Items: [] } })),
+            .catch(() => ({ data: { Items: [] as any[] } })),
         ]);
 
       // Combine all results
@@ -791,7 +793,7 @@ export const searchAllItems = async (searchTerm: string) => {
 
     return allResults;
   } catch (error) {
-    console.error("Error searching all items:", error);
+    logger.error("Error searching all items:", error);
     throw error;
   }
 };
@@ -799,11 +801,11 @@ export const searchAllItems = async (searchTerm: string) => {
 // Enhanced search that includes related content for artists
 export const searchWithRelatedContent = async (searchTerm: string) => {
   try {
-    console.log(`Searching for: "${searchTerm}"`);
+    logger.info(`Searching for: "${searchTerm}"`);
 
     // First get all basic search results
     const basicResults = await searchAllItems(searchTerm);
-    console.log(
+    logger.info(
       `Basic search returned ${basicResults.length} results:`,
       basicResults.map((r) => `${r.Type}: ${r.Name}`)
     );
@@ -812,7 +814,7 @@ export const searchWithRelatedContent = async (searchTerm: string) => {
     const matchingArtists = basicResults.filter(
       (item) => item.Type === "MusicArtist"
     );
-    console.log(
+    logger.info(
       `Found ${matchingArtists.length} matching artists:`,
       matchingArtists.map((a) => a.Name)
     );
@@ -822,13 +824,13 @@ export const searchWithRelatedContent = async (searchTerm: string) => {
     for (const artist of matchingArtists) {
       try {
         const albums = await getAlbumsByArtistId(artist.Id!);
-        console.log(
+        logger.info(
           `Albums for ${artist.Name}:`,
           albums.map((a) => a.Name)
         );
         artistAlbums.push(...albums);
       } catch (error) {
-        console.warn(`Failed to get albums for artist ${artist.Name}:`, error);
+        logger.warn(`Failed to get albums for artist ${artist.Name}:`, error);
       }
     }
 
@@ -842,10 +844,10 @@ export const searchWithRelatedContent = async (searchTerm: string) => {
       }
     }
 
-    console.log(`Final results: ${allResults.length} items`);
+    logger.info(`Final results: ${allResults.length} items`);
     return allResults;
   } catch (error) {
-    console.error("Error in enhanced search:", error);
+    logger.error("Error in enhanced search:", error);
     // Fallback to basic search
     return await searchAllItems(searchTerm);
   }
@@ -877,7 +879,7 @@ export const getAlbumsByArtistId = async (artistId: string) => {
 
     return response.data.Items || [];
   } catch (error) {
-    console.error("Error getting albums by artist:", error);
+    logger.error("Error getting albums by artist:", error);
     throw error;
   }
 };
@@ -904,7 +906,7 @@ export const getArtistInfo = async (artistId: string) => {
 
     return response.data.Items?.[0] || null;
   } catch (error) {
-    console.error("Error getting artist info:", error);
+    logger.error("Error getting artist info:", error);
     throw error;
   }
 };
@@ -940,7 +942,7 @@ export const getArtistAlbums = async (artistId: string) => {
 
     return response.data.Items || [];
   } catch (error) {
-    console.error("Error getting artist albums:", error);
+    logger.error("Error getting artist albums:", error);
     throw error;
   }
 };
@@ -977,7 +979,7 @@ export const getArtistTracks = async (artistId: string) => {
 
     return response.data.Items || [];
   } catch (error) {
-    console.error("Error getting artist tracks:", error);
+    logger.error("Error getting artist tracks:", error);
     throw error;
   }
 };
@@ -1054,7 +1056,7 @@ export const findArtistByName = async (artistName: string) => {
 
     return items[0] || null;
   } catch (error) {
-    console.error("Error finding artist by name:", error);
+    logger.error("Error finding artist by name:", error);
     throw error;
   }
 };
@@ -1106,7 +1108,7 @@ export const findAlbumByName = async (
 
     return albums[0] || null;
   } catch (error) {
-    console.error("Error finding album by name:", error);
+    logger.error("Error finding album by name:", error);
     throw error;
   }
 };
@@ -1176,7 +1178,7 @@ export const getAllArtists = async () => {
           (a.ItemCounts.AlbumCount > 0 || a.ItemCounts.SongCount > 0)
       ).length;
 
-      console.log(
+      logger.info(
         `Artists pagination: startIndex=${startIndex} fetched=${
           batch.length
         } cumulative=${allItems.length}/${
@@ -1193,7 +1195,7 @@ export const getAllArtists = async () => {
     // Return all artists (filtering moved to UI layer where album data is available)
     return allItems;
   } catch (error) {
-    console.error("Error getting all artists:", error);
+    logger.error("Error getting all artists:", error);
     throw error;
   }
 };
@@ -1251,7 +1253,7 @@ export const getAllAlbums = async () => {
 
     return allItems;
   } catch (error) {
-    console.error("Error getting all albums:", error);
+    logger.error("Error getting all albums:", error);
     throw error;
   }
 };
@@ -1309,7 +1311,7 @@ export const getAllPlaylists = async () => {
 
     return allItems;
   } catch (error) {
-    console.error("Error getting all playlists:", error);
+    logger.error("Error getting all playlists:", error);
     throw error;
   }
 };
@@ -1339,7 +1341,7 @@ export const createPlaylist = async (name: string) => {
 
     return response.data;
   } catch (error) {
-    console.error("Error creating playlist:", error);
+    logger.error("Error creating playlist:", error);
     throw error;
   }
 };
@@ -1365,7 +1367,7 @@ export const addTrackToPlaylist = async (
 
     return response.data;
   } catch (error) {
-    console.error("Error adding track to playlist:", error);
+    logger.error("Error adding track to playlist:", error);
     throw error;
   }
 };
@@ -1391,7 +1393,7 @@ export const addTracksToPlaylist = async (
 
     return response.data;
   } catch (error) {
-    console.error("Error adding tracks to playlist:", error);
+    logger.error("Error adding tracks to playlist:", error);
     throw error;
   }
 };
@@ -1414,7 +1416,7 @@ export const getCurrentUser = async () => {
 
     return response.data;
   } catch (error) {
-    console.error("Error getting current user:", error);
+    logger.error("Error getting current user:", error);
     throw error;
   }
 };
@@ -1437,7 +1439,7 @@ export const getServerInfo = async () => {
 
     return response.data;
   } catch (error) {
-    console.error("Error getting server info:", error);
+    logger.error("Error getting server info:", error);
     throw error;
   }
 };
@@ -1513,7 +1515,7 @@ export const getPlaylistInfo = async (playlistId: string) => {
 
     return response.data;
   } catch (error) {
-    console.error("Error getting playlist info:", error);
+    logger.error("Error getting playlist info:", error);
     throw error;
   }
 };
@@ -1554,7 +1556,7 @@ export const getPlaylistItems = async (playlistId: string) => {
 
     return response.data.Items || [];
   } catch (error) {
-    console.error("Error getting playlist items:", error);
+    logger.error("Error getting playlist items:", error);
     throw error;
   }
 };
@@ -1585,7 +1587,7 @@ export const deletePlaylist = async (playlistId: string) => {
     }
     return true;
   } catch (error) {
-    console.error("Error deleting playlist:", error);
+    logger.error("Error deleting playlist:", error);
     throw error;
   }
 };
@@ -1612,7 +1614,7 @@ export const reportPlaybackStart = async (
       }),
     });
   } catch (e) {
-    console.warn("reportPlaybackStart failed", e);
+    logger.warn("reportPlaybackStart failed", e);
   }
 };
 
@@ -1665,7 +1667,7 @@ export const reportPlaybackStopped = async (
       }),
     });
   } catch (e) {
-    console.warn("reportPlaybackStopped failed", e);
+    logger.warn("reportPlaybackStopped failed", e);
   }
 };
 
@@ -1742,7 +1744,7 @@ export const getTrackLyrics = async (
         }
       }
     } catch (error) {
-      console.log(
+      logger.info(
         "Primary lyrics fetch failed, trying alternative methods",
         error
       );
@@ -1782,12 +1784,12 @@ export const getTrackLyrics = async (
         }
       }
     } catch (error) {
-      console.log("No embedded lyrics found");
+      logger.info("No embedded lyrics found");
     }
 
     return null;
   } catch (error) {
-    console.error("Error fetching lyrics:", error);
+    logger.error("Error fetching lyrics:", error);
     return null;
   }
 };

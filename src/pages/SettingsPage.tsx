@@ -13,6 +13,7 @@ import { Switch } from "@/components/ui/switch";
 import { Separator } from "@/components/ui/separator";
 import { Database, Palette, Volume2, Server } from "lucide-react";
 import Sidebar from "@/components/Sidebar";
+import BackButton from "@/components/BackButton";
 import MusicPlayer from "@/components/MusicPlayer";
 import SyncManager from "@/components/SyncManager";
 import { hybridData, syncService } from "@/lib/sync";
@@ -61,9 +62,7 @@ export default function SettingsPage() {
         if (empty) {
           await syncService.startFullSync();
         }
-      } catch (e) {
-        console.warn("Initial auto sync failed", e);
-      }
+      } catch (e) {}
     };
     init();
   }, [autoSync]);
@@ -82,8 +81,11 @@ export default function SettingsPage() {
         {/* Header (non-sticky to match other pages) */}
         {!showLyrics && (
           <div className="mb-8">
-            <h1 className="text-3xl font-bold text-gray-900 mb-2">Settings</h1>
-            <p className="text-gray-600">
+            <div className="flex items-center justify-between">
+              <h1 className="text-3xl font-bold text-gray-900">Settings</h1>
+              <BackButton label="Back" />
+            </div>
+            <p className="text-gray-600 mt-2">
               Manage your Foxy Music Player preferences
             </p>
           </div>

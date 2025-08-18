@@ -9,12 +9,7 @@ import MusicPlayer from "@/components/MusicPlayer";
 import { useMusicPlayer } from "@/contexts/MusicContext";
 import { useAuthData } from "@/hooks/useAuthData";
 import { formatDuration, getImageUrl } from "@/utils/media";
-import {
-  Play,
-  Shuffle,
-  User,
-  Users,
-} from "lucide-react";
+import { Play, Shuffle, User, Users } from "lucide-react";
 import {
   getArtistInfo,
   getArtistAlbums,
@@ -23,6 +18,7 @@ import {
 } from "@/lib/jellyfin";
 import { BaseItemDto } from "@jellyfin/sdk/lib/generated-client/models";
 import BackButton from "@/components/BackButton";
+import { logger } from "@/lib/logger";
 
 // Interfaces for artist data
 interface ArtistInfo extends BaseItemDto {
@@ -102,7 +98,7 @@ const ArtistView = () => {
       setAlbums(artistAlbums);
       setTracks(artistTracks);
     } catch (error) {
-      console.error("Failed to load artist data", error);
+      logger.error("Failed to load artist data", error);
     } finally {
       setLoading(false);
     }
@@ -144,7 +140,7 @@ const ArtistView = () => {
         navigate(`/artist/${encodeURIComponent(artistName)}`);
       }
     } catch (error) {
-      console.error("Error finding artist:", error);
+      logger.error("Error finding artist:", error);
       // Fallback navigation
       navigate(`/artist/${encodeURIComponent(artistName)}`);
     }
@@ -230,8 +226,8 @@ const ArtistView = () => {
                     {showFullDescription
                       ? artistInfo.Overview
                       : artistInfo.Overview.length > 200
-                      ? artistInfo.Overview.substring(0, 200) + "..."
-                      : artistInfo.Overview}
+                        ? artistInfo.Overview.substring(0, 200) + "..."
+                        : artistInfo.Overview}
                   </p>
                   {artistInfo.Overview.length > 200 && (
                     <button

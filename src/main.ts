@@ -1,6 +1,7 @@
 import { app, BrowserWindow, shell, ipcMain } from "electron";
 import * as path from "path";
 import * as fs from "fs";
+import { logger } from "./lib/logger";
 
 // These are injected by @electron-forge/plugin-vite at build/dev time
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
@@ -58,7 +59,7 @@ app.whenReady().then(async () => {
       await fs.promises.rename(tmp, dbPath);
       return true;
     } catch (e) {
-      console.error("Main: db:save failed", e);
+      logger.error("Main: db:save failed", e);
       throw e;
     }
   });
@@ -69,7 +70,7 @@ app.whenReady().then(async () => {
       const buf = await fs.promises.readFile(dbPath);
       return buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength);
     } catch (e) {
-      console.error("Main: db:load failed", e);
+      logger.error("Main: db:load failed", e);
       return null;
     }
   });

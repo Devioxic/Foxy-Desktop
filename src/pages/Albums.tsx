@@ -125,43 +125,31 @@ const Albums = () => {
 
   const loadAlbums = async () => {
     // Don't block the UI - load data in background
-    console.time("Albums loading");
-    console.log("🎵 Albums page: Starting to load albums...");
+
     try {
       if (!isAuthenticated()) {
         navigate("/login");
         return;
       }
 
-      console.log("🎵 Albums page: Calling hybridData.getAlbums()...");
       // Use hybrid data service for better performance
       const albumsData = await hybridData.getAlbums();
-      console.log(
-        `🎵 Albums page: Got ${albumsData.length} albums from hybrid service`
-      );
 
       // Set unsorted data first for immediate display
       setAlbums(albumsData);
       setFilteredAlbums(albumsData);
-      console.log(
-        "🎵 Albums page: Unsorted albums set in state (immediate display)"
-      );
 
       // Sort in the background without blocking
       setTimeout(() => {
-        console.log("🎵 Albums page: Starting background sort...");
         const sortedAlbums = [...albumsData].sort((a, b) =>
           (a.Name || "").localeCompare(b.Name || "")
         );
         setAlbums(sortedAlbums);
         setFilteredAlbums(sortedAlbums);
-        console.log("🎵 Albums page: Sorted albums updated");
       }, 0);
     } catch (error) {
-      console.error("Failed to load albums", error);
     } finally {
       setDataLoaded(true); // Mark that we've attempted to load data
-      console.timeEnd("Albums loading");
     }
   };
 

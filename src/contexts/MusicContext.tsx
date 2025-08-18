@@ -5,6 +5,7 @@ import React, {
   useRef,
   useEffect,
 } from "react";
+import { logger } from "@/lib/logger";
 import {
   reportPlaybackStart,
   reportPlaybackProgress,
@@ -168,7 +169,7 @@ export const MusicProvider: React.FC<MusicProviderProps> = ({ children }) => {
           });
         }
       } catch (error) {
-        console.debug("Extended playback state not supported");
+        logger.debug("Extended playback state not supported");
       }
     }
   };
@@ -215,7 +216,7 @@ export const MusicProvider: React.FC<MusicProviderProps> = ({ children }) => {
           });
         } catch (error) {
           // Some browsers might not support all position state features
-          console.warn("Media Session position state update failed:", error);
+          logger.warn("Media Session position state update failed:", error);
         }
       }
     };
@@ -315,7 +316,7 @@ export const MusicProvider: React.FC<MusicProviderProps> = ({ children }) => {
         navigator.mediaSession.playbackState = "playing";
       }
     } catch (e) {
-      console.error("Error playing track", e);
+      logger.error("Error playing track", e);
     }
   };
 
@@ -354,7 +355,7 @@ export const MusicProvider: React.FC<MusicProviderProps> = ({ children }) => {
           }
         })
         .catch((e) => {
-          console.warn("Failed to resume playback", e);
+          logger.warn("Failed to resume playback", e);
         });
       return;
     }
@@ -716,7 +717,7 @@ export const MusicProvider: React.FC<MusicProviderProps> = ({ children }) => {
           });
         }
       } catch (error) {
-        console.debug("Experimental shuffle/repeat actions not supported");
+        logger.debug("Experimental shuffle/repeat actions not supported");
       }
     }
   }, [
@@ -782,7 +783,7 @@ export const MusicProvider: React.FC<MusicProviderProps> = ({ children }) => {
         }
       }
     } catch (e) {
-      console.warn("Failed to restore saved queue", e);
+      logger.warn("Failed to restore saved queue", e);
     }
   }, []);
 
@@ -803,7 +804,7 @@ export const MusicProvider: React.FC<MusicProviderProps> = ({ children }) => {
       }));
       localStorage.setItem("savedQueue", JSON.stringify(lightweight));
     } catch (e) {
-      console.warn("Failed to persist queue", e);
+      logger.warn("Failed to persist queue", e);
     }
   }, [queue]);
 

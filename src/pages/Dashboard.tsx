@@ -6,6 +6,7 @@ import MusicPlayer from "@/components/MusicPlayer";
 import Sidebar from "@/components/Sidebar";
 import { useMusicPlayer } from "@/contexts/MusicContext";
 import { Play, Music } from "lucide-react";
+import { logger } from "@/lib/logger";
 import {
   getRecentlyAdded,
   getFavorites,
@@ -52,7 +53,7 @@ const Dashboard = () => {
       setRecentlyAdded(added.Items?.slice(0, 12) || []);
       setFavorites(favs.Items?.slice(0, 6) || []);
     } catch (error) {
-      console.error("Failed to load music data", error);
+      logger.error("Failed to load music data", error);
     } finally {
       setLoading(false);
     }
@@ -150,7 +151,7 @@ const Dashboard = () => {
                                       playQueue(tracks as any[], 0);
                                     }
                                   } catch (err) {
-                                    console.error("Failed to play album", err);
+                                    logger.error("Failed to play album", err);
                                   }
                                 }}
                                 className="rounded-full w-10 h-10 bg-pink-600 hover:bg-pink-700"

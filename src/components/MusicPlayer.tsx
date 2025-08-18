@@ -1,4 +1,5 @@
 import React, { useState } from "react";
+import { logger } from "@/lib/logger";
 import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Slider } from "@/components/ui/slider";
@@ -135,7 +136,7 @@ const MusicPlayer: React.FC<MusicPlayerProps> = ({
       const fallback = attemptNames[1] || attemptNames[0] || original;
       navigate(`/artist/${encodeURIComponent(fallback)}`);
     } catch (error) {
-      console.error("Error finding artist:", error);
+      logger.error("Error finding artist:", error);
       navigate(`/artist/${encodeURIComponent(artistName)}`);
     }
   };
@@ -151,7 +152,7 @@ const MusicPlayer: React.FC<MusicPlayerProps> = ({
         navigate(`/album/${encodeURIComponent(albumName)}`);
       }
     } catch (error) {
-      console.error("Error finding album:", error);
+      logger.error("Error finding album:", error);
       // Fallback navigation
       navigate(`/album/${encodeURIComponent(albumName)}`);
     }
@@ -229,7 +230,7 @@ const MusicPlayer: React.FC<MusicPlayerProps> = ({
         );
         setIsFavorite(fav);
       } catch (e) {
-        console.warn("Failed to check favorite status", e);
+        logger.warn("Failed to check favorite status", e);
       }
     };
     loadFavorite();
@@ -249,7 +250,7 @@ const MusicPlayer: React.FC<MusicPlayerProps> = ({
         setIsFavorite(true);
       }
     } catch (err) {
-      console.error("Failed to toggle favorite", err);
+      logger.error("Failed to toggle favorite", err);
     } finally {
       setFavoriteLoading(false);
     }

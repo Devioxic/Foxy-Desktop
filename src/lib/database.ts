@@ -141,13 +141,10 @@ class LocalDatabase {
 
   async initialize(): Promise<void> {
     if (this.isInitialized) {
-      console.log("Database: Already initialized");
       return;
     }
 
     try {
-      console.log("Database: Starting initialization...");
-
       const isElectron = !!(
         typeof window !== "undefined" &&
         (window as any).process?.versions?.electron
@@ -161,25 +158,17 @@ class LocalDatabase {
             locateFile: (file) => {
               // sql.js only asks for `sql-wasm.wasm`; return the Vite-managed asset URL.
               if (file.endsWith(".wasm")) {
-                console.log("Database: using bundled wasm asset:", wasmUrl);
                 return wasmUrl as unknown as string;
               }
               // Fallback: return as-is (should not be needed)
               return file;
             },
           });
-          console.log("Database: SQL.js initialized");
+
           break; // Success
         } catch (sqlJsError) {
           retries--;
-          console.warn(
-            `Database: SQL.js initialization failed, ${retries} retries left:`,
-            sqlJsError
-          );
           if (retries === 0) {
-            console.error(
-              "Database: All retries exhausted. Ensure sql-wasm.wasm is present in dist/ next to index.html."
-            );
             throw sqlJsError;
           }
           await new Promise((resolve) => setTimeout(resolve, 800));
@@ -191,25 +180,19 @@ class LocalDatabase {
 
       if (savedDb) {
         this.db = new this.sqlJs.Database(savedDb);
-        console.log("Database: Loaded existing database from storage");
       } else {
         // Create new database
         this.db = new this.sqlJs.Database();
-        console.log("Database: Created new database");
       }
 
       // Run schema creation
       this.db.exec(SCHEMA);
-      console.log("Database: Schema created");
 
       // Save the database
       await this.saveDatabase();
-      console.log("Database: Database saved");
 
       this.isInitialized = true;
-      console.log("Database: Initialization completed successfully");
     } catch (error) {
-      console.error("Database: Failed to initialize:", error);
       throw error;
     }
   }
@@ -228,9 +211,7 @@ class LocalDatabase {
       } else {
         await localforage.setItem("jellyfinDatabase", data);
       }
-    } catch (error) {
-      console.error("Failed to save database:", error);
-    }
+    } catch (error) {}
   }
 
   private async loadPersistedDatabase(): Promise<Uint8Array | null> {
@@ -247,17 +228,11 @@ class LocalDatabase {
           return new Uint8Array(buf);
         }
       }
-    } catch (e) {
-      console.warn(
-        "Database: Electron dbLoad failed, falling back to localforage",
-        e
-      );
-    }
+    } catch (e) {}
     try {
       const saved = await localforage.getItem<Uint8Array>("jellyfinDatabase");
       return saved || null;
     } catch (e) {
-      console.warn("Database: localforage load failed", e);
       return null;
     }
   }
@@ -284,7 +259,6 @@ class LocalDatabase {
       stmt.free();
       return results;
     } catch (error) {
-      console.error("Database query error:", error, { sql, params });
       throw error;
     }
   }
@@ -591,9 +565,7 @@ class LocalDatabase {
       ]);
       this.exec("DELETE FROM playlists WHERE id = ?", [playlistId]);
       await this.saveDatabase();
-      console.log(`Database: Deleted playlist ${playlistId} from cache`);
     } catch (e) {
-      console.error("Database: Failed to delete playlist", e);
       throw e;
     }
   }
@@ -614,9 +586,7 @@ class LocalDatabase {
         [key, value, Date.now()]
       );
       await this.saveDatabase();
-      console.log(`Database: Set sync metadata ${key} = ${value}`);
     } catch (error) {
-      console.error(`Database: Failed to set sync metadata ${key}:`, error);
       throw error;
     }
   }
@@ -625,9 +595,6 @@ class LocalDatabase {
     try {
       // Ensure database is initialized
       if (!this.isInitialized || !this.db) {
-        console.warn(
-          `Database: Cannot get sync metadata ${key} - database not initialized`
-        );
         return null;
       }
 
@@ -636,17 +603,13 @@ class LocalDatabase {
         [key]
       );
       const value = results.length > 0 ? results[0].value : null;
-      console.log(`Database: Get sync metadata ${key} = ${value}`);
       return value;
     } catch (error) {
-      console.error(`Database: Failed to get sync metadata ${key}:`, error);
       return null;
     }
   }
 
   async getSyncStatus(): Promise<SyncStatus> {
-    console.log("Database: Getting sync status...");
-
     // Ensure database is initialized
     if (!this.isInitialized || !this.db) {
       throw new Error("Database not initialized. Call initialize() first.");
@@ -674,9 +637,6 @@ class LocalDatabase {
       lastFullSync === 0 &&
       (artistsCount > 0 || albumsCount > 0 || tracksCount > 0)
     ) {
-      console.log(
-        "Database: Found synced data without timestamp, setting current time"
-      );
       const now = Date.now();
       await this.setSyncMetadata("lastFullSync", now.toString());
       await this.setSyncMetadata("lastIncrementalSync", now.toString());
@@ -692,13 +652,12 @@ class LocalDatabase {
       playlistsCount,
     };
 
-    console.log("Database: Sync status:", status);
     return status;
   }
 
   async recomputeArtistCounts(): Promise<void> {
     if (!this.db) throw new Error("Database not initialized");
-    console.time("Database: recomputeArtistCounts");
+
     try {
       // Get minimal album + track artist linkage data
       const albumRows = this.exec(
@@ -748,10 +707,6 @@ class LocalDatabase {
         ...Object.keys(songCount),
       ]);
       if (allArtistIds.size === 0) {
-        console.log(
-          "Database: recomputeArtistCounts found no artist references"
-        );
-        console.timeEnd("Database: recomputeArtistCounts");
         return;
       }
 
@@ -772,14 +727,7 @@ class LocalDatabase {
       }
       stmt.free();
       await this.saveDatabase();
-      console.log(
-        `Database: recomputeArtistCounts updated counts for ${updated} artists (albums source rows=${albumRows.length}, tracks source rows=${trackRows.length})`
-      );
-      console.timeEnd("Database: recomputeArtistCounts");
-    } catch (error) {
-      console.error("Database: recomputeArtistCounts failed", error);
-      console.timeEnd("Database: recomputeArtistCounts");
-    }
+    } catch (error) {}
   }
 
   // Helper methods to convert database rows back to BaseItemDto objects

@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { logger } from "@/lib/logger";
 import { syncService, hybridData } from "@/lib/sync";
 import { useAuthData } from "@/hooks/useAuthData";
 
@@ -29,18 +30,11 @@ export const useSyncInitialization = () => {
 
         // If no data exists and we're online, start initial sync
         if (syncStatus.artistsCount === 0 && navigator.onLine) {
-          console.log("No local data found, starting initial sync...");
-
           // Start background sync (don't wait for completion)
-          syncService
-            .startFullSync((progress) => {
-              console.log("Initial sync progress:", progress);
-            })
-            .catch((error) => {
-              console.error("Background sync failed:", error);
-            });
+          syncService.startFullSync().catch((error) => {
+            logger.error("Background sync failed:", error);
+          });
         } else {
-          console.log("Sync data already exists:", syncStatus);
         }
 
         // Initialize hybrid data service settings
@@ -48,9 +42,8 @@ export const useSyncInitialization = () => {
         hybridData.setUseLocalFirst(useLocalFirst);
 
         setInitializationComplete(true);
-        console.log("Sync initialization complete");
       } catch (error: any) {
-        console.error("Sync initialization failed:", error);
+        logger.error("Sync initialization failed:", error);
         setError(error.message || "Initialization failed");
       } finally {
         setIsInitializing(false);
@@ -94,17 +87,12 @@ export const useAutoSync = () => {
           timeSinceLastSync > AUTO_SYNC_INTERVAL &&
           now - lastAutoSync > AUTO_SYNC_INTERVAL
         ) {
-          console.log("Starting auto-sync...");
           setLastAutoSync(now);
 
           // Start background incremental sync
-          syncService.startIncrementalSync().catch((error) => {
-            console.warn("Auto-sync failed:", error);
-          });
+          syncService.startIncrementalSync().catch(() => {});
         }
-      } catch (error) {
-        console.warn("Auto-sync check failed:", error);
-      }
+      } catch (error) {}
     };
 
     // Check immediately

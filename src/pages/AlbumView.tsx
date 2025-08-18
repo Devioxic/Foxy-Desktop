@@ -57,6 +57,7 @@ import {
 } from "@/lib/jellyfin";
 import IconDropdown from "@/components/IconDropdown";
 import BackButton from "@/components/BackButton";
+import { logger } from "@/lib/logger";
 
 interface AlbumTrack {
   Id?: string;
@@ -111,7 +112,7 @@ const AlbumView = () => {
         );
       }
     } catch (error) {
-      console.error("Error finding artist:", error);
+      logger.error("Error finding artist:", error);
       // Fallback navigation
       navigate(
         `/artist/${encodeURIComponent(artistName)}${
@@ -172,7 +173,7 @@ const AlbumView = () => {
         setIsAlbumFavorite(true);
       }
     } catch (error) {
-      console.error("Failed to toggle album favorite:", error);
+      logger.error("Failed to toggle album favorite:", error);
     } finally {
       setFavoriteLoading((prev) => ({ ...prev, [albumInfo.Id!]: false }));
     }
@@ -201,7 +202,7 @@ const AlbumView = () => {
         setTrackFavorites((prev) => ({ ...prev, [trackId]: true }));
       }
     } catch (error) {
-      console.error("Failed to toggle track favorite:", error);
+      logger.error("Failed to toggle track favorite:", error);
     } finally {
       setFavoriteLoading((prev) => ({ ...prev, [trackId]: false }));
     }
@@ -219,14 +220,16 @@ const AlbumView = () => {
 
   const loadUserInfo = async () => {
     try {
-      const [user, server] = await Promise.all([
-        getCurrentUser().catch(() => null),
-        getServerInfo().catch(() => null),
+      const [user, server] = await Promise.all<
+        [typeof currentUser | null, typeof serverInfo | null]
+      >([
+        getCurrentUser().catch(() => null as any),
+        getServerInfo().catch(() => null as any),
       ]);
       setCurrentUser(user);
       setServerInfo(server);
     } catch (error) {
-      console.error("Failed to load user info", error);
+      logger.error("Failed to load user info", error);
     }
   };
 
@@ -268,7 +271,7 @@ const AlbumView = () => {
               );
               return { id: track.Id, isFavorite };
             } catch (error) {
-              console.error(
+              logger.error(
                 `Failed to check favorite status for track ${track.Id}:`,
                 error
               );
@@ -290,7 +293,7 @@ const AlbumView = () => {
         setTrackFavorites(trackFavoriteMap);
       }
     } catch (error) {
-      console.error("Failed to load album data", error);
+      logger.error("Failed to load album data", error);
     } finally {
       perf.end("AlbumView.load");
       setLoading(false);
@@ -461,8 +464,8 @@ const AlbumView = () => {
                       {showFullDescription
                         ? albumInfo.Overview
                         : albumInfo.Overview.length > 200
-                        ? albumInfo.Overview.substring(0, 200) + "..."
-                        : albumInfo.Overview}
+                          ? albumInfo.Overview.substring(0, 200) + "..."
+                          : albumInfo.Overview}
                     </p>
                     {albumInfo.Overview.length > 200 && (
                       <button
@@ -519,7 +522,6 @@ const AlbumView = () => {
                     <DropdownMenuItem
                       onClick={(e) => {
                         e.stopPropagation();
-                        console.log("Add album to playlist - pending impl");
                       }}
                       className="cursor-pointer"
                     >

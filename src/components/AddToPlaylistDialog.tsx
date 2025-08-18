@@ -13,6 +13,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { addTrackToPlaylist, getPlaylistInfo } from "@/lib/jellyfin";
 import { localDb } from "@/lib/database";
 import { hybridData } from "@/lib/sync";
+import { logger } from "@/lib/logger";
 import { ListMusic, Plus, Loader2 } from "lucide-react";
 import { BaseItemDto } from "@jellyfin/sdk/lib/generated-client/models";
 import BlurHashImage from "@/components/BlurHashImage";
@@ -68,7 +69,7 @@ export default function AddToPlaylistDialog({
       const playlistsData = await hybridData.getPlaylists();
       setPlaylists(playlistsData);
     } catch (error) {
-      console.error("Failed to load playlists:", error);
+      logger.error("Failed to load playlists:", error);
     } finally {
       setLoading(false);
     }
@@ -93,12 +94,9 @@ export default function AddToPlaylistDialog({
           try {
             await localDb.initialize();
             await localDb.savePlaylists([updated]);
-          } catch (cacheErr) {
-            console.warn("Failed to update local cache for playlist", cacheErr);
-          }
+          } catch (cacheErr) {}
         }
       } catch (infoErr) {
-        console.warn("Failed to fetch updated playlist info", infoErr);
         // Optimistic UI: bump count locally if we have one
         setPlaylists((prev) =>
           prev.map((p) =>
@@ -117,7 +115,7 @@ export default function AddToPlaylistDialog({
       // Close dialog
       onOpenChange(false);
     } catch (error) {
-      console.error("Failed to add track to playlist:", error);
+      logger.error("Failed to add track to playlist:", error);
       // Show error feedback (you could add a toast here)
     } finally {
       setAddingToPlaylist(null);
