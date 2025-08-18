@@ -1,15 +1,6 @@
-import React, { useState, useEffect } from "react";
+import { useState, useEffect } from "react";
 import { useParams, useNavigate, useSearchParams } from "react-router-dom";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent } from "@/components/ui/card";
-import { Skeleton } from "@/components/ui/skeleton";
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
 import Sidebar from "@/components/Sidebar";
 import TrackList from "@/components/TrackList";
 import LoadingSkeleton from "@/components/LoadingSkeleton";
@@ -21,13 +12,8 @@ import { formatDuration, getImageUrl } from "@/utils/media";
 import {
   Play,
   Shuffle,
-  Star,
-  MoreVertical,
-  ArrowLeft,
-  Plus,
   User,
   Users,
-  Disc3,
 } from "lucide-react";
 import {
   getArtistInfo,
@@ -296,6 +282,7 @@ const ArtistView = () => {
                 onShowMoreToggle={() => setShowAllTracks(!showAllTracks)}
                 maxInitialTracks={5}
                 formatDuration={formatDuration}
+                usePlaylistIndex={true}
               />
             </div>
           )}
