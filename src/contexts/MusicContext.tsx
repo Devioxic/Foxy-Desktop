@@ -163,8 +163,8 @@ export const MusicProvider: React.FC<MusicProviderProps> = ({ children }) => {
               repeatMode === "off"
                 ? "none"
                 : repeatMode === "one"
-                ? "track"
-                : "playlist",
+                  ? "track"
+                  : "playlist",
           });
         }
       } catch (error) {
@@ -341,7 +341,25 @@ export const MusicProvider: React.FC<MusicProviderProps> = ({ children }) => {
   };
 
   const resume = () => {
-    if (isPaused && currentTrack) {
+    if (!currentTrack) return;
+    // If paused, resume without changing the source to avoid restarting
+    if (isPaused) {
+      audio
+        .play()
+        .then(() => {
+          setIsPlaying(true);
+          setIsPaused(false);
+          if ("mediaSession" in navigator) {
+            navigator.mediaSession.playbackState = "playing";
+          }
+        })
+        .catch((e) => {
+          console.warn("Failed to resume playback", e);
+        });
+      return;
+    }
+    // If not paused but not playing (e.g., stopped), start normal play
+    if (!isPlaying) {
       play();
     }
   };
