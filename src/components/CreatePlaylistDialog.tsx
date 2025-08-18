@@ -1,4 +1,5 @@
 import React, { useState } from "react";
+import { logger } from "@/lib/logger";
 import {
   Dialog,
   DialogContent,
@@ -35,7 +36,7 @@ const CreatePlaylistDialog: React.FC<CreatePlaylistDialogProps> = ({
       setPlaylistName("");
       onOpenChange(false);
     } catch (error) {
-      console.error("Failed to create playlist:", error);
+      logger.error("Failed to create playlist:", error);
     } finally {
       setIsCreating(false);
     }

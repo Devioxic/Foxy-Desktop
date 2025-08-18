@@ -16,6 +16,7 @@ import {
   AlertCircle,
 } from "lucide-react";
 import { syncService, SyncProgress } from "@/lib/sync";
+import { logger } from "@/lib/logger";
 
 interface SyncStatusIndicatorProps {
   className?: string;
@@ -41,7 +42,6 @@ export default function SyncStatusIndicator({
 
     // Listen for custom sync events
     const handleSyncUpdate = () => {
-      console.log("SyncStatusIndicator: Received sync update event");
       loadSyncStatus();
     };
 
@@ -62,10 +62,8 @@ export default function SyncStatusIndicator({
 
   const loadSyncStatus = async () => {
     try {
-      console.log("SyncStatusIndicator: Loading sync status...");
       await syncService.initialize();
       const status = await syncService.getSyncStatus();
-      console.log("SyncStatusIndicator: Sync status loaded:", status);
       setSyncStatus(status);
       setIsSyncing(syncService.isCurrentlyRunning());
 
@@ -85,18 +83,11 @@ export default function SyncStatusIndicator({
           newLastSyncTime = "Recently";
         }
         setLastSyncTime(newLastSyncTime);
-        console.log(
-          "SyncStatusIndicator: Last sync time set to:",
-          newLastSyncTime
-        );
       } else {
         setLastSyncTime("Never");
-        console.log(
-          "SyncStatusIndicator: No sync data found, setting to Never"
-        );
       }
     } catch (error) {
-      console.warn("Failed to load sync status:", error);
+      logger.warn("Failed to load sync status:", error);
       setLastSyncTime("Error");
     }
   };
@@ -122,9 +113,7 @@ export default function SyncStatusIndicator({
 
       await loadSyncStatus();
       setSyncProgress(null);
-      console.log("SyncStatusIndicator: Sync completed and status reloaded");
     } catch (error) {
-      console.error("Quick sync failed:", error);
       setSyncProgress(null);
     } finally {
       setIsSyncing(false);
@@ -188,8 +177,8 @@ export default function SyncStatusIndicator({
                       ? isSyncing
                         ? syncProgress?.message || "Syncing..."
                         : lastSyncTime === "Never"
-                        ? "Click to sync"
-                        : lastSyncTime
+                          ? "Click to sync"
+                          : lastSyncTime
                       : "Offline"}
                   </span>
                 </div>

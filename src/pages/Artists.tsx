@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from "react";
+import { logger } from "@/lib/logger";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -87,7 +88,7 @@ const Artists = () => {
         false,
         true
       );
-      console.log(
+      logger.info(
         `ArtistsPage: received ${artistsData.length} artists with albums (unpaginated)`
       );
 
@@ -95,7 +96,7 @@ const Artists = () => {
       setFilteredArtists(artistsData as Artist[]);
       console.timeEnd("ArtistsPage.loadArtists.total");
     } catch (error) {
-      console.error("Failed to load artists", error);
+      logger.error("Failed to load artists", error);
     } finally {
       setDataLoaded(true);
     }

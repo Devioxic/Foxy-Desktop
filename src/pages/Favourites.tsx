@@ -10,6 +10,7 @@ import { Disc3, Search } from "lucide-react";
 import { getFavoriteAlbums } from "@/lib/jellyfin";
 import { BaseItemDto } from "@jellyfin/sdk/lib/generated-client/models";
 import { useAuthData } from "@/hooks/useAuthData";
+import { logger } from "@/lib/logger";
 
 interface FavouriteAlbum extends BaseItemDto {
   AlbumArtist?: string;
@@ -69,7 +70,7 @@ const Favourites = () => {
       setFavouriteAlbums(items);
       setFilteredAlbums(items);
     } catch (error) {
-      console.error("Failed to load favourite albums:", error);
+      logger.error("Failed to load favourite albums:", error);
     } finally {
       setLoading(false);
     }

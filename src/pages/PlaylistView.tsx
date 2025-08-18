@@ -11,6 +11,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { logger } from "@/lib/logger";
 import AddToPlaylistDialog from "@/components/AddToPlaylistDialog";
 import MusicPlayer from "@/components/MusicPlayer";
 import Sidebar from "@/components/Sidebar";
@@ -128,7 +129,7 @@ const PlaylistView = () => {
         );
         setIsFavorite(favoriteStatus);
       } catch (error) {
-        console.error("Error checking favorite status:", error);
+        logger.error("Error checking favorite status:", error);
       }
 
       // Check favorite status for all tracks
@@ -143,7 +144,7 @@ const PlaylistView = () => {
               );
               return { id: track.Id, isFavorite };
             } catch (error) {
-              console.error(
+              logger.error(
                 `Failed to check favorite status for track ${track.Id}:`,
                 error
               );
@@ -161,11 +162,10 @@ const PlaylistView = () => {
             trackFavoriteMap[result.id] = result.isFavorite;
           }
         });
-
         setTrackFavorites(trackFavoriteMap);
       }
     } catch (error) {
-      console.error("Failed to load playlist data", error);
+      logger.error("Failed to load playlist data", error);
     } finally {
       setLoading(false);
     }
@@ -238,7 +238,7 @@ const PlaylistView = () => {
         setIsFavorite(true);
       }
     } catch (error) {
-      console.error("Error toggling favorite:", error);
+      logger.error("Error toggling favorite:", error);
     }
   };
 
@@ -265,7 +265,7 @@ const PlaylistView = () => {
         setTrackFavorites((prev) => ({ ...prev, [trackId]: true }));
       }
     } catch (error) {
-      console.error("Failed to toggle track favorite:", error);
+      logger.error("Failed to toggle track favorite:", error);
     } finally {
       setFavoriteLoading((prev) => ({ ...prev, [trackId]: false }));
     }
@@ -293,7 +293,7 @@ const PlaylistView = () => {
         );
       }
     } catch (error) {
-      console.error("Error finding artist:", error);
+      logger.error("Error finding artist:", error);
       navigate(
         `/artist/${encodeURIComponent(artistName)}${
           searchParams.get("q")
@@ -456,7 +456,7 @@ const PlaylistView = () => {
                         // Notify any listeners to refresh
                         window.dispatchEvent(new CustomEvent("syncUpdate"));
                       } catch (cacheErr) {
-                        console.warn(
+                        logger.warn(
                           "Failed updating local cache after delete",
                           cacheErr
                         );
@@ -464,7 +464,7 @@ const PlaylistView = () => {
                       // Navigate back to playlists
                       navigate(-1);
                     } catch (err) {
-                      console.error("Failed to delete playlist", err);
+                      logger.error("Failed to delete playlist", err);
                       alert("Failed to delete playlist");
                     }
                   }}

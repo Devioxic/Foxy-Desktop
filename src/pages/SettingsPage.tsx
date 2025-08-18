@@ -11,15 +11,9 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Switch } from "@/components/ui/switch";
 import { Separator } from "@/components/ui/separator";
-import {
-  ArrowLeft,
-  Settings,
-  Database,
-  Palette,
-  Volume2,
-  Server,
-} from "lucide-react";
+import { Database, Palette, Volume2, Server } from "lucide-react";
 import Sidebar from "@/components/Sidebar";
+import BackButton from "@/components/BackButton";
 import MusicPlayer from "@/components/MusicPlayer";
 import SyncManager from "@/components/SyncManager";
 import { hybridData, syncService } from "@/lib/sync";
@@ -46,6 +40,7 @@ export default function SettingsPage() {
     const stored = localStorage.getItem("autoSync");
     return stored ? stored === "true" : false;
   });
+  const [showLyrics, setShowLyrics] = useState(false);
 
   useEffect(() => {
     localStorage.setItem("useLocalFirst", String(useLocalFirst));
@@ -67,9 +62,7 @@ export default function SettingsPage() {
         if (empty) {
           await syncService.startFullSync();
         }
-      } catch (e) {
-        console.warn("Initial auto sync failed", e);
-      }
+      } catch (e) {}
     };
     init();
   }, [autoSync]);
@@ -82,29 +75,24 @@ export default function SettingsPage() {
   };
 
   return (
-    <div className="flex min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-gray-50">
       <Sidebar />
-      <div className="flex-1 lg:ml-64">
-        <div className="sticky top-0 z-40 bg-white border-b border-gray-200 px-4 py-3">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center space-x-3">
-              <Button variant="ghost" size="sm" onClick={() => navigate(-1)}>
-                <ArrowLeft className="w-4 h-4 mr-2" />
-                Back
-              </Button>
-              <div>
-                <h1 className="text-xl font-semibold text-gray-900">
-                  Settings
-                </h1>
-                <p className="text-sm text-gray-500">
-                  Manage your Foxy Music Player preferences
-                </p>
-              </div>
+      <div className="ml-64 p-6 pb-28">
+        {/* Header (non-sticky to match other pages) */}
+        {!showLyrics && (
+          <div className="mb-8">
+            <div className="flex items-center justify-between">
+              <h1 className="text-3xl font-bold text-gray-900">Settings</h1>
+              <BackButton label="Back" />
             </div>
+            <p className="text-gray-600 mt-2">
+              Manage your Foxy Music Player preferences
+            </p>
           </div>
-        </div>
+        )}
 
-        <div className="p-4 pb-20">
+        {/* Content hidden when lyrics are open */}
+        {!showLyrics && (
           <Tabs defaultValue="sync" className="w-full max-w-6xl">
             <TabsList className="grid w-full grid-cols-4 bg-gray-200 p-1 rounded-lg">
               <TabsTrigger
@@ -286,9 +274,12 @@ export default function SettingsPage() {
               </Card>
             </TabsContent>
           </Tabs>
-        </div>
+        )}
       </div>
-      <MusicPlayer />
+      <MusicPlayer
+        showLyrics={showLyrics}
+        onLyricsToggle={(show) => setShowLyrics(show)}
+      />
     </div>
   );
 }

@@ -11,7 +11,6 @@ import { useAuthData } from "@/hooks/useAuthData";
 import { useSyncInitialization, useAutoSync } from "@/hooks/useSync";
 import ErrorBoundary from "@/components/ErrorBoundary";
 import LoadingSkeleton from "@/components/LoadingSkeleton";
-import "@/utils/performance"; // Import performance diagnostics
 import Sidebar from "@/components/Sidebar";
 import MusicPlayer from "@/components/MusicPlayer";
 import { Toaster } from "sonner"; // Global toast renderer

@@ -9,6 +9,7 @@ import {
   getArtistInfo,
 } from "./jellyfin";
 import { BaseItemDto } from "@jellyfin/sdk/lib/generated-client/models";
+import { logger } from "./logger";
 
 export interface SyncProgress {
   stage: "artists" | "albums" | "tracks" | "playlists" | "complete";
@@ -48,7 +49,6 @@ class SyncService {
       (Date.now() - lastFullSync) / (1000 * 60 * 60 * 24);
 
     if (!force && lastFullSync > 0 && daysSinceLastSync < 1) {
-      console.log("Full sync not needed, last sync was less than 24 hours ago");
       return;
     }
 
@@ -56,10 +56,17 @@ class SyncService {
     this.abortController = new AbortController();
 
     try {
-      console.log("Starting full sync...");
+      const notifyProgress = (p: SyncProgress) => {
+        try {
+          onProgress?.(p);
+        } finally {
+          // Broadcast progress so other views (e.g., Settings) can reflect it
+          window.dispatchEvent(new CustomEvent("syncProgress", { detail: p }));
+        }
+      };
 
       // Stage 1: Sync Artists
-      onProgress?.({
+      notifyProgress({
         stage: "artists",
         current: 0,
         total: 0,
@@ -67,10 +74,9 @@ class SyncService {
       });
 
       const artists = await getAllArtists();
-      console.log(`Found ${artists.length} artists`);
 
       if (artists.length > 0) {
-        onProgress?.({
+        notifyProgress({
           stage: "artists",
           current: 0,
           total: artists.length,
@@ -79,7 +85,7 @@ class SyncService {
 
         await localDb.saveArtists(artists);
 
-        onProgress?.({
+        notifyProgress({
           stage: "artists",
           current: artists.length,
           total: artists.length,
@@ -88,7 +94,7 @@ class SyncService {
       }
 
       // Stage 2: Sync Albums
-      onProgress?.({
+      notifyProgress({
         stage: "albums",
         current: 0,
         total: 0,
@@ -96,10 +102,9 @@ class SyncService {
       });
 
       const albums = await getAllAlbums();
-      console.log(`Found ${albums.length} albums`);
 
       if (albums.length > 0) {
-        onProgress?.({
+        notifyProgress({
           stage: "albums",
           current: 0,
           total: albums.length,
@@ -112,10 +117,10 @@ class SyncService {
         try {
           await localDb.recomputeArtistCounts();
         } catch (e) {
-          console.warn("Recomputing artist counts (post-albums) failed", e);
+          logger.warn("Recomputing artist counts (post-albums) failed", e);
         }
 
-        onProgress?.({
+        notifyProgress({
           stage: "albums",
           current: albums.length,
           total: albums.length,
@@ -124,7 +129,7 @@ class SyncService {
       }
 
       // Stage 3: Sync Tracks (fetch from albums)
-      onProgress?.({
+      notifyProgress({
         stage: "tracks",
         current: 0,
         total: albums.length,
@@ -149,14 +154,11 @@ class SyncService {
             allTracks = [...allTracks, ...albumTracksResult.Items];
           }
         } catch (error) {
-          console.warn(
-            `Failed to fetch tracks for album ${album.Name}:`,
-            error
-          );
+          logger.warn(`Failed to fetch tracks for album ${album.Name}:`, error);
         }
 
         processedAlbums++;
-        onProgress?.({
+        notifyProgress({
           stage: "tracks",
           current: processedAlbums,
           total: albums.length,
@@ -179,11 +181,11 @@ class SyncService {
       try {
         await localDb.recomputeArtistCounts();
       } catch (e) {
-        console.warn("Recomputing artist counts (post-tracks) failed", e);
+        logger.warn("Recomputing artist counts (post-tracks) failed", e);
       }
 
       // Stage 4: Sync Playlists
-      onProgress?.({
+      notifyProgress({
         stage: "playlists",
         current: 0,
         total: 0,
@@ -191,10 +193,9 @@ class SyncService {
       });
 
       const playlists = await getAllPlaylists();
-      console.log(`Found ${playlists.length} playlists`);
 
       if (playlists.length > 0) {
-        onProgress?.({
+        notifyProgress({
           stage: "playlists",
           current: 0,
           total: playlists.length,
@@ -203,7 +204,7 @@ class SyncService {
 
         await localDb.savePlaylists(playlists);
 
-        onProgress?.({
+        notifyProgress({
           stage: "playlists",
           current: playlists.length,
           total: playlists.length,
@@ -218,19 +219,16 @@ class SyncService {
         Date.now().toString()
       );
 
-      onProgress?.({
+      notifyProgress({
         stage: "complete",
         current: 1,
         total: 1,
         message: "Synchronization completed successfully!",
       });
 
-      console.log("Full sync completed successfully");
-
       // Dispatch sync update event
       window.dispatchEvent(new CustomEvent("syncUpdate"));
     } catch (error) {
-      console.error("Full sync failed:", error);
       throw error;
     } finally {
       this.isRunning = false;
@@ -239,12 +237,9 @@ class SyncService {
   }
 
   async startIncrementalSync(onProgress?: SyncProgressCallback): Promise<void> {
-    // True incremental: if a full sync is running or none yet, delegate to full sync
     const syncStatus = await localDb.getSyncStatus();
+    // If a full sync is running or none has occurred yet, run full sync
     if (this.isRunning || syncStatus.lastFullSync === 0) {
-      console.log(
-        "Incremental sync delegates to full sync (none run yet or already running)"
-      );
       await this.startFullSync(onProgress);
       return;
     }
@@ -262,13 +257,19 @@ class SyncService {
     this.abortController = new AbortController();
 
     try {
-      console.log("Starting incremental sync...");
+      const notifyProgress = (p: SyncProgress) => {
+        try {
+          onProgress?.(p);
+        } finally {
+          window.dispatchEvent(new CustomEvent("syncProgress", { detail: p }));
+        }
+      };
+
       const lastIncremental =
         syncStatus.lastIncrementalSync || syncStatus.lastFullSync;
-      const cutoff = lastIncremental - 5 * 60 * 1000; // small fudge window
+      const cutoff = lastIncremental - 5 * 60 * 1000; // 5-minute window
 
-      // For simplicity, fetch all albums then filter by date_created after cutoff
-      onProgress?.({
+      notifyProgress({
         stage: "albums",
         current: 0,
         total: 0,
@@ -277,40 +278,38 @@ class SyncService {
       const allAlbums = await getAllAlbums();
       const changedAlbums = allAlbums.filter((a: any) => {
         const created = a.DateCreated ? Date.parse(a.DateCreated) : 0;
-        return created >= cutoff || (a as any).DateModified; // naive detection
+        return created >= cutoff || (a as any).DateModified;
       });
 
       if (changedAlbums.length) {
-        let processed = 0;
-        onProgress?.({
+        notifyProgress({
           stage: "albums",
           current: 0,
           total: changedAlbums.length,
           message: `Updating ${changedAlbums.length} changed albums...`,
         });
         await localDb.saveAlbums(changedAlbums);
-        processed = changedAlbums.length;
-        onProgress?.({
+        notifyProgress({
           stage: "albums",
-          current: processed,
+          current: changedAlbums.length,
           total: changedAlbums.length,
           message: "Albums updated",
         });
       }
 
-      // Tracks for changed albums only
       if (changedAlbums.length) {
-        onProgress?.({
+        notifyProgress({
           stage: "tracks",
           current: 0,
           total: changedAlbums.length,
           message: "Refreshing tracks for changed albums...",
         });
-        let allTracks: any[] = [];
+        let allTracks: BaseItemDto[] = [];
         let processedAlbums = 0;
         for (const album of changedAlbums) {
-          if (this.abortController?.signal.aborted)
+          if (this.abortController?.signal.aborted) {
             throw new Error("Sync was aborted");
+          }
           try {
             const albumTracksResult = await getAlbumItems(
               authData.serverAddress,
@@ -321,14 +320,14 @@ class SyncService {
               allTracks = [...allTracks, ...albumTracksResult.Items];
             }
           } catch (e) {
-            console.warn(
+            logger.warn(
               "Incremental: failed to fetch tracks for",
               album.Name,
               e
             );
           }
           processedAlbums++;
-          onProgress?.({
+          notifyProgress({
             stage: "tracks",
             current: processedAlbums,
             total: changedAlbums.length,
@@ -345,12 +344,11 @@ class SyncService {
         } catch {}
       }
 
-      // Update incremental sync metadata only
       await localDb.setSyncMetadata(
         "lastIncrementalSync",
         Date.now().toString()
       );
-      onProgress?.({
+      notifyProgress({
         stage: "complete",
         current: 1,
         total: 1,
@@ -358,7 +356,6 @@ class SyncService {
       });
       window.dispatchEvent(new CustomEvent("syncUpdate"));
     } catch (e) {
-      console.error("Incremental sync failed", e);
       throw e;
     } finally {
       this.isRunning = false;
@@ -397,7 +394,6 @@ class SyncService {
     }
 
     await localDb["saveDatabase"]();
-    console.log("Database cleared");
   }
 }
 
@@ -431,7 +427,6 @@ export class HybridDataService {
 
       const status = await syncService.getSyncStatus();
       if (status.artistsCount > 0 || status.albumsCount > 0) {
-        console.log("✅ Sync has produced data, continuing with local data");
         break;
       }
 
@@ -457,7 +452,7 @@ export class HybridDataService {
         }
 
         if (localArtists.length === 0 && (await this.shouldWaitForSync())) {
-          console.log(
+          logger.info(
             "🔄 No local artists found, waiting briefly for sync progress..."
           );
           await this.waitForSyncProgress(3000);
@@ -472,7 +467,7 @@ export class HybridDataService {
           return localArtists;
         }
       } catch (error) {
-        console.warn(
+        logger.warn(
           "Local artist retrieval failed, falling back to server",
           error
         );
@@ -499,11 +494,10 @@ export class HybridDataService {
         await localDb.initialize();
         const localArtist = await localDb.getArtistById(id);
         if (localArtist) {
-          console.log(`Retrieved artist ${id} from local database`);
           return localArtist;
         }
       } catch (error) {
-        console.warn(
+        logger.warn(
           "Failed to get artist from local database, falling back to server:",
           error
         );
@@ -511,11 +505,11 @@ export class HybridDataService {
     }
 
     // Fall back to server
-    console.log(`Fetching artist ${id} from server...`);
+
     try {
       return await getArtistInfo(id);
     } catch (error) {
-      console.error("Failed to fetch artist from server:", error);
+      logger.error("Failed to fetch artist from server:", error);
       return null;
     }
   }
@@ -525,42 +519,24 @@ export class HybridDataService {
     offset?: number,
     forceOnline: boolean = false
   ): Promise<BaseItemDto[]> {
-    console.time("HybridData.getAlbums");
-    console.log("🔍 HybridData.getAlbums: Starting...");
-
     if (!forceOnline && this.useLocalFirst) {
       try {
-        console.log("🔍 HybridData.getAlbums: Initializing local DB...");
         await localDb.initialize();
-        console.log("🔍 HybridData.getAlbums: Getting albums from local DB...");
         let localAlbums = await localDb.getAlbums(limit, offset);
-        console.log(
-          `🔍 HybridData.getAlbums: Found ${localAlbums.length} local albums`
-        );
 
         // If no local data but sync is running, wait a bit for sync to complete
         if (localAlbums.length === 0 && (await this.shouldWaitForSync())) {
-          console.log(
-            "🔄 No local albums found, but sync is running. Waiting for sync progress..."
-          );
           await this.waitForSyncProgress(3000); // Wait up to 3 seconds
 
           // Try again after waiting
           localAlbums = await localDb.getAlbums(limit, offset);
-          console.log(
-            `🔍 HybridData.getAlbums: After waiting, found ${localAlbums.length} local albums`
-          );
         }
 
         if (localAlbums.length > 0) {
-          console.log(
-            `🔍 HybridData.getAlbums: Retrieved ${localAlbums.length} albums from local database`
-          );
-          console.timeEnd("HybridData.getAlbums");
           return localAlbums;
         }
       } catch (error) {
-        console.warn(
+        logger.warn(
           "🔍 HybridData.getAlbums: Failed to get albums from local database, falling back to server:",
           error
         );
@@ -568,12 +544,8 @@ export class HybridDataService {
     }
 
     // Fall back to server
-    console.log("🔍 HybridData.getAlbums: Fetching albums from server...");
     const serverAlbums = await getAllAlbums();
-    console.log(
-      `🔍 HybridData.getAlbums: Got ${serverAlbums.length} albums from server`
-    );
-    console.timeEnd("HybridData.getAlbums");
+
     return serverAlbums;
   }
 
@@ -586,11 +558,10 @@ export class HybridDataService {
         await localDb.initialize();
         const localAlbum = await localDb.getAlbumById(id);
         if (localAlbum) {
-          console.log(`Retrieved album ${id} from local database`);
           return localAlbum;
         }
       } catch (error) {
-        console.warn(
+        logger.warn(
           "Failed to get album from local database, falling back to server:",
           error
         );
@@ -598,7 +569,7 @@ export class HybridDataService {
     }
 
     // Fall back to server
-    console.log(`Fetching album ${id} from server...`);
+
     try {
       const authData = JSON.parse(localStorage.getItem("authData") || "{}");
       if (!authData.serverAddress || !authData.accessToken) {
@@ -610,7 +581,7 @@ export class HybridDataService {
         id
       );
     } catch (error) {
-      console.error("Failed to fetch album from server:", error);
+      logger.error("Failed to fetch album from server:", error);
       return null;
     }
   }
@@ -624,13 +595,10 @@ export class HybridDataService {
         await localDb.initialize();
         const localTracks = await localDb.getTracksByAlbumId(albumId);
         if (localTracks.length > 0) {
-          console.log(
-            `Retrieved ${localTracks.length} tracks for album ${albumId} from local database`
-          );
           return localTracks;
         }
       } catch (error) {
-        console.warn(
+        logger.warn(
           "Failed to get album tracks from local database, falling back to server:",
           error
         );
@@ -638,7 +606,7 @@ export class HybridDataService {
     }
 
     // Fall back to server
-    console.log(`Fetching tracks for album ${albumId} from server...`);
+
     try {
       const authData = JSON.parse(localStorage.getItem("authData") || "{}");
       if (!authData.serverAddress || !authData.accessToken) {
@@ -651,7 +619,7 @@ export class HybridDataService {
       );
       return result.Items || [];
     } catch (error) {
-      console.error("Failed to fetch album tracks from server:", error);
+      logger.error("Failed to fetch album tracks from server:", error);
       return [];
     }
   }
@@ -665,13 +633,10 @@ export class HybridDataService {
         await localDb.initialize();
         const localAlbums = await localDb.getAlbumsByArtistId(artistId);
         if (localAlbums.length > 0) {
-          console.log(
-            `Retrieved ${localAlbums.length} albums for artist ${artistId} from local database`
-          );
           return localAlbums;
         }
       } catch (error) {
-        console.warn(
+        logger.warn(
           "Failed to get artist albums from local database, falling back to server:",
           error
         );
@@ -679,12 +644,12 @@ export class HybridDataService {
     }
 
     // Fall back to server
-    console.log(`Fetching albums for artist ${artistId} from server...`);
+
     try {
       const { getArtistAlbums } = await import("./jellyfin");
       return await getArtistAlbums(artistId);
     } catch (error) {
-      console.error("Failed to fetch artist albums from server:", error);
+      logger.error("Failed to fetch artist albums from server:", error);
       return [];
     }
   }
@@ -698,13 +663,10 @@ export class HybridDataService {
         await localDb.initialize();
         const localTracks = await localDb.getTracksByArtistId(artistId);
         if (localTracks.length > 0) {
-          console.log(
-            `Retrieved ${localTracks.length} tracks for artist ${artistId} from local database`
-          );
           return localTracks;
         }
       } catch (error) {
-        console.warn(
+        logger.warn(
           "Failed to get artist tracks from local database, falling back to server:",
           error
         );
@@ -712,7 +674,7 @@ export class HybridDataService {
     }
 
     // Fall back to server
-    console.log(`Fetching tracks for artist ${artistId} from server...`);
+
     return await getArtistTracks(artistId);
   }
 
@@ -722,13 +684,13 @@ export class HybridDataService {
         await localDb.initialize();
         const localPlaylists = await localDb.getPlaylists();
         if (localPlaylists.length > 0) {
-          console.log(
+          logger.info(
             `Retrieved ${localPlaylists.length} playlists from local database`
           );
           return localPlaylists;
         }
       } catch (error) {
-        console.warn(
+        logger.warn(
           "Failed to get playlists from local database, falling back to server:",
           error
         );
@@ -736,7 +698,7 @@ export class HybridDataService {
     }
 
     // Fall back to server
-    console.log("Fetching playlists from server...");
+
     return await getAllPlaylists();
   }
 
@@ -749,13 +711,13 @@ export class HybridDataService {
         await localDb.initialize();
         const localResults = await localDb.searchArtists(query);
         if (localResults.length > 0) {
-          console.log(
+          logger.info(
             `Found ${localResults.length} artists matching "${query}" in local database`
           );
           return localResults;
         }
       } catch (error) {
-        console.warn(
+        logger.warn(
           "Failed to search artists in local database, falling back to server:",
           error
         );
@@ -763,7 +725,7 @@ export class HybridDataService {
     }
 
     // Fall back to server search (would need to implement server search)
-    console.log(`Searching for artists "${query}" on server...`);
+
     const allArtists = await this.getArtists(undefined, undefined, true);
     return allArtists.filter((artist) =>
       artist.Name?.toLowerCase().includes(query.toLowerCase())
@@ -776,7 +738,7 @@ export class HybridDataService {
       await localDb.initialize();
       return await localDb.searchTracks(query);
     } catch (e) {
-      console.warn("Track search failed", e);
+      logger.warn("Track search failed", e);
       return [];
     }
   }
@@ -799,13 +761,16 @@ function scheduleAutoSync() {
   }
   if (autoSyncInterval) return; // already scheduled
   // Run incremental every 30 minutes
-  autoSyncInterval = window.setInterval(() => {
-    if (!enabled) return;
-    if (syncService.isCurrentlyRunning()) return;
-    syncService
-      .startIncrementalSync()
-      .catch((e) => console.warn("Auto incremental sync failed", e));
-  }, 30 * 60 * 1000);
+  autoSyncInterval = window.setInterval(
+    () => {
+      if (!enabled) return;
+      if (syncService.isCurrentlyRunning()) return;
+      syncService
+        .startIncrementalSync()
+        .catch((e) => logger.warn("Auto incremental sync failed", e));
+    },
+    30 * 60 * 1000
+  );
 }
 
 // Visibility / online triggers
@@ -816,7 +781,7 @@ if (typeof window !== "undefined") {
       if (enabled && !syncService.isCurrentlyRunning()) {
         syncService
           .startIncrementalSync()
-          .catch((e) => console.warn("Visibility incremental sync failed", e));
+          .catch((e) => logger.warn("Visibility incremental sync failed", e));
       }
     }
   });
@@ -825,7 +790,7 @@ if (typeof window !== "undefined") {
     if (enabled && !syncService.isCurrentlyRunning()) {
       syncService
         .startIncrementalSync()
-        .catch((e) => console.warn("Online incremental sync failed", e));
+        .catch((e) => logger.warn("Online incremental sync failed", e));
     }
   });
   scheduleAutoSync();

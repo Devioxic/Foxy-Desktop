@@ -6,9 +6,8 @@ import MusicPlayer from "@/components/MusicPlayer";
 import Sidebar from "@/components/Sidebar";
 import { useMusicPlayer } from "@/contexts/MusicContext";
 import { Play, Music } from "lucide-react";
+import { logger } from "@/lib/logger";
 import {
-  getMusicLibraryItems,
-  getRecentlyPlayed,
   getRecentlyAdded,
   getFavorites,
   getRecentlyPlayedAlbums,
@@ -24,6 +23,7 @@ const Dashboard = () => {
   const [recentlyAdded, setRecentlyAdded] = useState<any[]>([]);
   const [favorites, setFavorites] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [showLyrics, setShowLyrics] = useState(false);
   const [authData] = useState(() =>
     JSON.parse(localStorage.getItem("authData") || "{}")
   );
@@ -53,7 +53,7 @@ const Dashboard = () => {
       setRecentlyAdded(added.Items?.slice(0, 12) || []);
       setFavorites(favs.Items?.slice(0, 6) || []);
     } catch (error) {
-      console.error("Failed to load music data", error);
+      logger.error("Failed to load music data", error);
     } finally {
       setLoading(false);
     }
@@ -88,95 +88,100 @@ const Dashboard = () => {
 
       {/* Main Content */}
       <div className="ml-64">
-        {/* Content */}
-        <div className="max-w-none mx-auto p-6 pb-28">
-          {loading ? (
-            <LoadingSkeleton type="dashboard" />
-          ) : (
-            <div className="space-y-8">
-              {/* Quick Access Grid */}
-              {recentlyPlayed.length > 0 && (
-                <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3 mb-8">
-                  {recentlyPlayed.slice(0, 6).map((item) => (
-                    <Card
-                      key={item.Id}
-                      className="group cursor-pointer hover:shadow-md transition-shadow overflow-hidden"
-                      style={{ boxSizing: "content-box" }}
-                      onClick={() => navigate(`/album/${item.Id}`)}
-                    >
-                      <CardContent className="h-full w-full p-0">
-                        <div className="flex items-center h-full w-full">
-                          <div className="flex-shrink-0 relative rounded-l-lg flex items-center justify-center p-2.5">
-                            {item.ImageTags?.Primary ? (
-                              <img
-                                src={`${authData.serverAddress}/Items/${item.Id}/Images/Primary?maxWidth=96&quality=90`}
-                                alt={item.Name}
-                                className="w-20 h-20 object-cover rounded-md flex-shrink-0"
-                              />
-                            ) : (
-                              <div className="w-20 h-20 flex items-center justify-center bg-gradient-to-br from-pink-200 to-rose-200 rounded-md flex-shrink-0">
-                                <Music className="w-8 h-8 text-pink-400" />
-                              </div>
-                            )}
-                          </div>
-                          <div className="flex-1 p-4 min-w-0">
-                            <h3
-                              className="font-medium text-gray-900 text-sm leading-tight mb-1 overflow-hidden"
-                              style={{
-                                display: "-webkit-box",
-                                WebkitLineClamp: 2,
-                                WebkitBoxOrient: "vertical",
-                              }}
-                            >
-                              {item.Name}
-                            </h3>
-                            <p className="text-sm text-gray-600 truncate">
-                              {item.AlbumArtist || "Unknown Artist"}
-                            </p>
-                          </div>
-                          <div className="px-4 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0">
-                            <Button
-                              size="sm"
-                              onClick={async (e) => {
-                                e.stopPropagation();
-                                try {
-                                  const res = await getAlbumItems(
-                                    authData.serverAddress,
-                                    authData.accessToken,
-                                    item.Id
-                                  );
-                                  const tracks = res?.Items || [];
-                                  if (tracks.length) {
-                                    playQueue(tracks as any[], 0);
+        {/* Content (hidden when lyrics are open) */}
+        {!showLyrics && (
+          <div className="max-w-none mx-auto p-6 pb-28">
+            {loading ? (
+              <LoadingSkeleton type="dashboard" />
+            ) : (
+              <div className="space-y-8">
+                {/* Quick Access Grid */}
+                {recentlyPlayed.length > 0 && (
+                  <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3 mb-8">
+                    {recentlyPlayed.slice(0, 6).map((item) => (
+                      <Card
+                        key={item.Id}
+                        className="group cursor-pointer hover:shadow-md transition-shadow overflow-hidden"
+                        style={{ boxSizing: "content-box" }}
+                        onClick={() => navigate(`/album/${item.Id}`)}
+                      >
+                        <CardContent className="h-full w-full p-0">
+                          <div className="flex items-center h-full w-full">
+                            <div className="flex-shrink-0 relative rounded-l-lg flex items-center justify-center p-2.5">
+                              {item.ImageTags?.Primary ? (
+                                <img
+                                  src={`${authData.serverAddress}/Items/${item.Id}/Images/Primary?maxWidth=96&quality=90`}
+                                  alt={item.Name}
+                                  className="w-20 h-20 object-cover rounded-md flex-shrink-0"
+                                />
+                              ) : (
+                                <div className="w-20 h-20 flex items-center justify-center bg-gradient-to-br from-pink-200 to-rose-200 rounded-md flex-shrink-0">
+                                  <Music className="w-8 h-8 text-pink-400" />
+                                </div>
+                              )}
+                            </div>
+                            <div className="flex-1 p-4 min-w-0">
+                              <h3
+                                className="font-medium text-gray-900 text-sm leading-tight mb-1 overflow-hidden"
+                                style={{
+                                  display: "-webkit-box",
+                                  WebkitLineClamp: 2,
+                                  WebkitBoxOrient: "vertical",
+                                }}
+                              >
+                                {item.Name}
+                              </h3>
+                              <p className="text-sm text-gray-600 truncate">
+                                {item.AlbumArtist || "Unknown Artist"}
+                              </p>
+                            </div>
+                            <div className="px-4 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0">
+                              <Button
+                                size="sm"
+                                onClick={async (e) => {
+                                  e.stopPropagation();
+                                  try {
+                                    const res = await getAlbumItems(
+                                      authData.serverAddress,
+                                      authData.accessToken,
+                                      item.Id
+                                    );
+                                    const tracks = res?.Items || [];
+                                    if (tracks.length) {
+                                      playQueue(tracks as any[], 0);
+                                    }
+                                  } catch (err) {
+                                    logger.error("Failed to play album", err);
                                   }
-                                } catch (err) {
-                                  console.error("Failed to play album", err);
-                                }
-                              }}
-                              className="rounded-full w-10 h-10 bg-pink-600 hover:bg-pink-700"
-                            >
-                              <Play className="w-4 h-4 ml-0.5" />
-                            </Button>
+                                }}
+                                className="rounded-full w-10 h-10 bg-pink-600 hover:bg-pink-700"
+                              >
+                                <Play className="w-4 h-4 ml-0.5" />
+                              </Button>
+                            </div>
                           </div>
-                        </div>
-                      </CardContent>
-                    </Card>
-                  ))}
-                </div>
-              )}
+                        </CardContent>
+                      </Card>
+                    ))}
+                  </div>
+                )}
 
-              {/* Sections */}
-              {recentlyAdded.length > 0 &&
-                renderSection("Recently Added", recentlyAdded)}
-              {favorites.length > 0 &&
-                renderSection("Your Favourites", favorites)}
-            </div>
-          )}
-        </div>
+                {/* Sections */}
+                {recentlyAdded.length > 0 &&
+                  renderSection("Recently Added", recentlyAdded)}
+                {favorites.length > 0 &&
+                  renderSection("Your Favourites", favorites)}
+              </div>
+            )}
+          </div>
+        )}
       </div>
 
       {/* Music Player */}
-      <MusicPlayer />
+      <MusicPlayer
+        showLyrics={showLyrics}
+        onLyricsToggle={(show) => setShowLyrics(show)}
+      />
     </div>
   );
 };

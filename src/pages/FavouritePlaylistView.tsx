@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from "react";
+import { logger } from "@/lib/logger";
 import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -86,7 +87,7 @@ const FavouritePlaylistView = () => {
       });
       setTrackFavorites(trackFavoriteMap);
     } catch (error) {
-      console.error("Failed to load favorite tracks", error);
+      logger.error("Failed to load favorite tracks", error);
     } finally {
       setLoading(false);
     }
@@ -151,7 +152,7 @@ const FavouritePlaylistView = () => {
       // Reload the favorites list
       loadFavoriteTracks();
     } catch (error) {
-      console.error("Failed to remove track from favorites:", error);
+      logger.error("Failed to remove track from favorites:", error);
     } finally {
       setFavoriteLoading((prev) => ({ ...prev, [trackId]: false }));
     }
@@ -166,7 +167,7 @@ const FavouritePlaylistView = () => {
         navigate(`/artist/${encodeURIComponent(artistName)}`);
       }
     } catch (error) {
-      console.error("Error finding artist:", error);
+      logger.error("Error finding artist:", error);
       navigate(`/artist/${encodeURIComponent(artistName)}`);
     }
   };

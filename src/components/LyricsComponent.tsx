@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from "react";
+import { logger } from "@/lib/logger";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useMusicPlayer } from "@/contexts/MusicContext";
@@ -78,7 +79,7 @@ const LyricsComponent: React.FC<LyricsProps> = ({ isOpen, onClose }) => {
         setError("No lyrics found for this track");
       }
     } catch (error) {
-      console.error("Error loading lyrics:", error);
+      logger.error("Error loading lyrics:", error);
       setError("Failed to load lyrics");
     } finally {
       setLoading(false);
@@ -178,8 +179,8 @@ const LyricsComponent: React.FC<LyricsProps> = ({ isOpen, onClose }) => {
                         isActive
                           ? "text-pink-500 font-semibold text-2xl sm:text-3xl"
                           : lyrics.isTimeSynced
-                          ? "text-gray-600 hover:text-gray-800 text-lg sm:text-xl"
-                          : "text-gray-800 text-lg sm:text-xl"
+                            ? "text-gray-600 hover:text-gray-800 text-lg sm:text-xl"
+                            : "text-gray-800 text-lg sm:text-xl"
                       }`}
                       style={{
                         transitionProperty: "color",

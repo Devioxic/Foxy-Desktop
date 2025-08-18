@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useMemo } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { Input } from "@/components/ui/input";
+import { logger } from "@/lib/logger";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import Sidebar from "@/components/Sidebar";
@@ -126,7 +127,7 @@ const Playlists = () => {
       setPlaylists(sortedPlaylists);
       setFilteredPlaylists(sortedPlaylists);
     } catch (error) {
-      console.error("Failed to load playlists", error);
+      logger.error("Failed to load playlists", error);
     } finally {
       setLoading(false);
     }
@@ -142,7 +143,7 @@ const Playlists = () => {
       // Reload playlists to show the new one
       await loadPlaylists();
     } catch (error) {
-      console.error("Failed to create playlist:", error);
+      logger.error("Failed to create playlist:", error);
       // You could add toast notification here for better UX
       throw error; // Re-throw to let dialog handle the error state
     }

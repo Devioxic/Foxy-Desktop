@@ -10,8 +10,10 @@ import {
 } from "@/components/ui/dialog";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Card, CardContent } from "@/components/ui/card";
-import { getAllPlaylists, addTrackToPlaylist } from "@/lib/jellyfin";
+import { addTrackToPlaylist, getPlaylistInfo } from "@/lib/jellyfin";
+import { localDb } from "@/lib/database";
 import { hybridData } from "@/lib/sync";
+import { logger } from "@/lib/logger";
 import { ListMusic, Plus, Loader2 } from "lucide-react";
 import { BaseItemDto } from "@jellyfin/sdk/lib/generated-client/models";
 import BlurHashImage from "@/components/BlurHashImage";
@@ -67,7 +69,7 @@ export default function AddToPlaylistDialog({
       const playlistsData = await hybridData.getPlaylists();
       setPlaylists(playlistsData);
     } catch (error) {
-      console.error("Failed to load playlists:", error);
+      logger.error("Failed to load playlists:", error);
     } finally {
       setLoading(false);
     }
@@ -79,11 +81,41 @@ export default function AddToPlaylistDialog({
     setAddingToPlaylist(playlistId);
     try {
       await addTrackToPlaylist(playlistId, trackId);
-      // Show success feedback (you could add a toast here)
-      console.log(`Track added to playlist successfully!`);
+      // Try to fetch updated playlist info from server
+      try {
+        const updated = await getPlaylistInfo(playlistId);
+        if (updated) {
+          // Update in-memory list so the dialog reflects the new count immediately
+          setPlaylists((prev) =>
+            prev.map((p) => (p.Id === playlistId ? { ...p, ...updated } : p))
+          );
+
+          // Update local DB cache so Playlists page (which uses hybrid data) shows correct ChildCount
+          try {
+            await localDb.initialize();
+            await localDb.savePlaylists([updated]);
+          } catch (cacheErr) {}
+        }
+      } catch (infoErr) {
+        // Optimistic UI: bump count locally if we have one
+        setPlaylists((prev) =>
+          prev.map((p) =>
+            p.Id === playlistId
+              ? { ...p, ChildCount: (p.ChildCount || 0) + 1 }
+              : p
+          )
+        );
+      }
+
+      // Notify other views to refresh (Playlists page listens for this)
+      try {
+        window.dispatchEvent(new CustomEvent("syncUpdate"));
+      } catch {}
+
+      // Close dialog
       onOpenChange(false);
     } catch (error) {
-      console.error("Failed to add track to playlist:", error);
+      logger.error("Failed to add track to playlist:", error);
       // Show error feedback (you could add a toast here)
     } finally {
       setAddingToPlaylist(null);

@@ -1,4 +1,5 @@
 import { hybridData, syncService } from "@/lib/sync";
+import { logger } from "@/lib/logger";
 
 // Lightweight performance marking helpers
 export const perf = {
@@ -14,7 +15,7 @@ export const perf = {
       if (import.meta.env.DEV) {
         const measures = performance.getEntriesByName(label, "measure");
         const last = measures[measures.length - 1];
-        if (last) console.log(`🕒 ${label}: ${last.duration.toFixed(2)}ms`);
+        if (last) logger.info(`🕒 ${label}: ${last.duration.toFixed(2)}ms`);
       }
     } catch {}
   },
@@ -33,13 +34,14 @@ export const performanceDiagnostics = {
     // Test 1: Database initialization
     const dbInitStart = performance.now();
     try {
-      await hybridData["localDb"]?.initialize();
+      // Access optional localDb if present without index signature complaints
+      await (hybridData as any)?.localDb?.initialize?.();
       const dbInitEnd = performance.now();
       results.tests.databaseInit = {
         duration: dbInitEnd - dbInitStart,
         success: true,
       };
-      console.log(
+      logger.info(
         `✅ Database init: ${(dbInitEnd - dbInitStart).toFixed(2)}ms`
       );
     } catch (error: any) {
@@ -48,7 +50,7 @@ export const performanceDiagnostics = {
         success: false,
         error: error.message,
       };
-      console.error("❌ Database init failed:", error);
+      logger.error("❌ Database init failed:", error);
     }
 
     // Test 2: Sync status check
@@ -61,7 +63,7 @@ export const performanceDiagnostics = {
         success: true,
         status: syncStatus,
       };
-      console.log(
+      logger.info(
         `✅ Sync status: ${(syncStatusEnd - syncStatusStart).toFixed(2)}ms`,
         syncStatus
       );
@@ -71,7 +73,7 @@ export const performanceDiagnostics = {
         success: false,
         error: error.message,
       };
-      console.error("❌ Sync status failed:", error);
+      logger.error("❌ Sync status failed:", error);
     }
 
     // Test 3: Artists loading
@@ -85,10 +87,8 @@ export const performanceDiagnostics = {
         count: artists.length,
         source: artists.length > 0 ? "local" : "server",
       };
-      console.log(
-        `✅ Artists load: ${(artistsEnd - artistsStart).toFixed(2)}ms (${
-          artists.length
-        } artists)`
+      logger.info(
+        `✅ Artists load: ${(artistsEnd - artistsStart).toFixed(2)}ms (${artists.length} artists)`
       );
     } catch (error: any) {
       results.tests.artistsLoad = {
@@ -96,7 +96,7 @@ export const performanceDiagnostics = {
         success: false,
         error: error.message,
       };
-      console.error("❌ Artists load failed:", error);
+      logger.error("❌ Artists load failed:", error);
     }
 
     // Test 4: Albums loading
@@ -110,10 +110,8 @@ export const performanceDiagnostics = {
         count: albums.length,
         source: albums.length > 0 ? "local" : "server",
       };
-      console.log(
-        `✅ Albums load: ${(albumsEnd - albumsStart).toFixed(2)}ms (${
-          albums.length
-        } albums)`
+      logger.info(
+        `✅ Albums load: ${(albumsEnd - albumsStart).toFixed(2)}ms (${albums.length} albums)`
       );
     } catch (error: any) {
       results.tests.albumsLoad = {
@@ -121,7 +119,7 @@ export const performanceDiagnostics = {
         success: false,
         error: error.message,
       };
-      console.error("❌ Albums load failed:", error);
+      logger.error("❌ Albums load failed:", error);
     }
 
     // Test 5: Playlists loading
@@ -135,10 +133,8 @@ export const performanceDiagnostics = {
         count: playlists.length,
         source: playlists.length > 0 ? "local" : "server",
       };
-      console.log(
-        `✅ Playlists load: ${(playlistsEnd - playlistsStart).toFixed(2)}ms (${
-          playlists.length
-        } playlists)`
+      logger.info(
+        `✅ Playlists load: ${(playlistsEnd - playlistsStart).toFixed(2)}ms (${playlists.length} playlists)`
       );
     } catch (error: any) {
       results.tests.playlistsLoad = {
@@ -146,7 +142,7 @@ export const performanceDiagnostics = {
         success: false,
         error: error.message,
       };
-      console.error("❌ Playlists load failed:", error);
+      logger.error("❌ Playlists load failed:", error);
     }
 
     console.groupEnd();
@@ -156,7 +152,7 @@ export const performanceDiagnostics = {
       .filter((test: any) => test.success && test.duration > 0)
       .reduce((sum: number, test: any) => sum + test.duration, 0);
 
-    console.log(`📊 Total test duration: ${totalDuration.toFixed(2)}ms`);
+    logger.info(`📊 Total test duration: ${totalDuration.toFixed(2)}ms`);
 
     return results;
   },
@@ -166,17 +162,17 @@ export const performanceDiagnostics = {
 
     try {
       const syncStatus = await syncService.getSyncStatus();
-      console.log("Artists count:", syncStatus.artistsCount);
-      console.log("Albums count:", syncStatus.albumsCount);
-      console.log("Tracks count:", syncStatus.tracksCount);
-      console.log("Playlists count:", syncStatus.playlistsCount);
-      console.log(
+      logger.info("Artists count:", syncStatus.artistsCount);
+      logger.info("Albums count:", syncStatus.albumsCount);
+      logger.info("Tracks count:", syncStatus.tracksCount);
+      logger.info("Playlists count:", syncStatus.playlistsCount);
+      logger.info(
         "Last full sync:",
         syncStatus.lastFullSync
           ? new Date(syncStatus.lastFullSync).toLocaleString()
           : "Never"
       );
-      console.log(
+      logger.info(
         "Last incremental sync:",
         syncStatus.lastIncrementalSync
           ? new Date(syncStatus.lastIncrementalSync).toLocaleString()
@@ -184,17 +180,17 @@ export const performanceDiagnostics = {
       );
 
       const hasData = syncStatus.artistsCount > 0 || syncStatus.albumsCount > 0;
-      console.log(
+      logger.info(
         hasData ? "✅ Local data available" : "❌ No local data found"
       );
 
       if (!hasData) {
-        console.warn(
+        logger.warn(
           "🔄 Pages will load from server (slow). Consider running a sync first."
         );
       }
     } catch (error) {
-      console.error("❌ Failed to check data availability:", error);
+      logger.error("❌ Failed to check data availability:", error);
     }
 
     console.groupEnd();

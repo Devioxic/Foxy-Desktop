@@ -1,4 +1,5 @@
 import React, { useState } from "react";
+import { logger } from "@/lib/logger";
 import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Slider } from "@/components/ui/slider";
@@ -135,7 +136,7 @@ const MusicPlayer: React.FC<MusicPlayerProps> = ({
       const fallback = attemptNames[1] || attemptNames[0] || original;
       navigate(`/artist/${encodeURIComponent(fallback)}`);
     } catch (error) {
-      console.error("Error finding artist:", error);
+      logger.error("Error finding artist:", error);
       navigate(`/artist/${encodeURIComponent(artistName)}`);
     }
   };
@@ -151,7 +152,7 @@ const MusicPlayer: React.FC<MusicPlayerProps> = ({
         navigate(`/album/${encodeURIComponent(albumName)}`);
       }
     } catch (error) {
-      console.error("Error finding album:", error);
+      logger.error("Error finding album:", error);
       // Fallback navigation
       navigate(`/album/${encodeURIComponent(albumName)}`);
     }
@@ -167,8 +168,11 @@ const MusicPlayer: React.FC<MusicPlayerProps> = ({
   const handlePlayPause = () => {
     if (isPlaying) {
       pause();
+    } else if (isPaused) {
+      // Resume from current position when paused
+      resume();
     } else {
-      // This handles both paused and ended states
+      // Start playback (e.g., from stopped/ended)
       play();
     }
   };
@@ -226,7 +230,7 @@ const MusicPlayer: React.FC<MusicPlayerProps> = ({
         );
         setIsFavorite(fav);
       } catch (e) {
-        console.warn("Failed to check favorite status", e);
+        logger.warn("Failed to check favorite status", e);
       }
     };
     loadFavorite();
@@ -246,7 +250,7 @@ const MusicPlayer: React.FC<MusicPlayerProps> = ({
         setIsFavorite(true);
       }
     } catch (err) {
-      console.error("Failed to toggle favorite", err);
+      logger.error("Failed to toggle favorite", err);
     } finally {
       setFavoriteLoading(false);
     }
@@ -287,8 +291,8 @@ const MusicPlayer: React.FC<MusicPlayerProps> = ({
     const source = ms.IsDirectStream
       ? "Direct"
       : ms.TranscodingUrl || ms.TranscodeUrl
-      ? "Transcode"
-      : undefined;
+        ? "Transcode"
+        : undefined;
     return { label: parts.join(" • "), source };
   }, [currentTrack?.MediaSources, currentTrack?.Id]);
 
@@ -416,7 +420,7 @@ const MusicPlayer: React.FC<MusicPlayerProps> = ({
             <Button
               onClick={handlePlayPause}
               className="rounded-full w-9 h-9 bg-gray-800 hover:bg-gray-700 shadow-sm p-0 flex items-center justify-center"
-              title={isPlaying ? "Pause" : "Play"}
+              title={isPlaying ? "Pause" : isPaused ? "Resume" : "Play"}
             >
               {isPlaying ? (
                 <Pause className="w-4 h-4 text-white" />
@@ -446,8 +450,8 @@ const MusicPlayer: React.FC<MusicPlayerProps> = ({
                 repeatMode === "off"
                   ? "Turn on repeat"
                   : repeatMode === "all"
-                  ? "Repeat one"
-                  : "Turn off repeat"
+                    ? "Repeat one"
+                    : "Turn off repeat"
               }
             >
               {repeatMode === "one" ? (

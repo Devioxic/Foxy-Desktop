@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { logger } from "@/lib/logger";
 import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
@@ -21,13 +22,13 @@ const UserProfile = () => {
   const loadUserInfo = async () => {
     try {
       const [user, server] = await Promise.all([
-        getCurrentUser().catch(() => null),
-        getServerInfo().catch(() => null),
+        getCurrentUser().catch((_e): null => null),
+        getServerInfo().catch((_e): null => null),
       ]);
       setCurrentUser(user);
       setServerInfo(server);
     } catch (error) {
-      console.error("Failed to load user info", error);
+      logger.error("Failed to load user info", error);
     }
   };
 
