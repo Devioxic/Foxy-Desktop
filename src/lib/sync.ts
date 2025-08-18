@@ -56,10 +56,18 @@ class SyncService {
     this.abortController = new AbortController();
 
     try {
+      const notifyProgress = (p: SyncProgress) => {
+        try {
+          onProgress?.(p);
+        } finally {
+          // Broadcast progress so other views (e.g., Settings) can reflect it
+          window.dispatchEvent(new CustomEvent("syncProgress", { detail: p }));
+        }
+      };
       console.log("Starting full sync...");
 
       // Stage 1: Sync Artists
-      onProgress?.({
+      notifyProgress({
         stage: "artists",
         current: 0,
         total: 0,
@@ -70,7 +78,7 @@ class SyncService {
       console.log(`Found ${artists.length} artists`);
 
       if (artists.length > 0) {
-        onProgress?.({
+        notifyProgress({
           stage: "artists",
           current: 0,
           total: artists.length,
@@ -79,7 +87,7 @@ class SyncService {
 
         await localDb.saveArtists(artists);
 
-        onProgress?.({
+        notifyProgress({
           stage: "artists",
           current: artists.length,
           total: artists.length,
@@ -88,7 +96,7 @@ class SyncService {
       }
 
       // Stage 2: Sync Albums
-      onProgress?.({
+      notifyProgress({
         stage: "albums",
         current: 0,
         total: 0,
@@ -99,7 +107,7 @@ class SyncService {
       console.log(`Found ${albums.length} albums`);
 
       if (albums.length > 0) {
-        onProgress?.({
+        notifyProgress({
           stage: "albums",
           current: 0,
           total: albums.length,
@@ -115,7 +123,7 @@ class SyncService {
           console.warn("Recomputing artist counts (post-albums) failed", e);
         }
 
-        onProgress?.({
+        notifyProgress({
           stage: "albums",
           current: albums.length,
           total: albums.length,
@@ -124,7 +132,7 @@ class SyncService {
       }
 
       // Stage 3: Sync Tracks (fetch from albums)
-      onProgress?.({
+      notifyProgress({
         stage: "tracks",
         current: 0,
         total: albums.length,
@@ -156,7 +164,7 @@ class SyncService {
         }
 
         processedAlbums++;
-        onProgress?.({
+        notifyProgress({
           stage: "tracks",
           current: processedAlbums,
           total: albums.length,
@@ -183,7 +191,7 @@ class SyncService {
       }
 
       // Stage 4: Sync Playlists
-      onProgress?.({
+      notifyProgress({
         stage: "playlists",
         current: 0,
         total: 0,
@@ -194,7 +202,7 @@ class SyncService {
       console.log(`Found ${playlists.length} playlists`);
 
       if (playlists.length > 0) {
-        onProgress?.({
+        notifyProgress({
           stage: "playlists",
           current: 0,
           total: playlists.length,
@@ -203,7 +211,7 @@ class SyncService {
 
         await localDb.savePlaylists(playlists);
 
-        onProgress?.({
+        notifyProgress({
           stage: "playlists",
           current: playlists.length,
           total: playlists.length,
@@ -218,7 +226,7 @@ class SyncService {
         Date.now().toString()
       );
 
-      onProgress?.({
+      notifyProgress({
         stage: "complete",
         current: 1,
         total: 1,
@@ -262,13 +270,20 @@ class SyncService {
     this.abortController = new AbortController();
 
     try {
+      const notifyProgress = (p: SyncProgress) => {
+        try {
+          onProgress?.(p);
+        } finally {
+          window.dispatchEvent(new CustomEvent("syncProgress", { detail: p }));
+        }
+      };
       console.log("Starting incremental sync...");
       const lastIncremental =
         syncStatus.lastIncrementalSync || syncStatus.lastFullSync;
       const cutoff = lastIncremental - 5 * 60 * 1000; // small fudge window
 
       // For simplicity, fetch all albums then filter by date_created after cutoff
-      onProgress?.({
+      notifyProgress({
         stage: "albums",
         current: 0,
         total: 0,
@@ -282,7 +297,7 @@ class SyncService {
 
       if (changedAlbums.length) {
         let processed = 0;
-        onProgress?.({
+        notifyProgress({
           stage: "albums",
           current: 0,
           total: changedAlbums.length,
@@ -290,7 +305,7 @@ class SyncService {
         });
         await localDb.saveAlbums(changedAlbums);
         processed = changedAlbums.length;
-        onProgress?.({
+        notifyProgress({
           stage: "albums",
           current: processed,
           total: changedAlbums.length,
@@ -300,7 +315,7 @@ class SyncService {
 
       // Tracks for changed albums only
       if (changedAlbums.length) {
-        onProgress?.({
+        notifyProgress({
           stage: "tracks",
           current: 0,
           total: changedAlbums.length,
@@ -328,7 +343,7 @@ class SyncService {
             );
           }
           processedAlbums++;
-          onProgress?.({
+          notifyProgress({
             stage: "tracks",
             current: processedAlbums,
             total: changedAlbums.length,
@@ -350,7 +365,7 @@ class SyncService {
         "lastIncrementalSync",
         Date.now().toString()
       );
-      onProgress?.({
+      notifyProgress({
         stage: "complete",
         current: 1,
         total: 1,
@@ -799,13 +814,16 @@ function scheduleAutoSync() {
   }
   if (autoSyncInterval) return; // already scheduled
   // Run incremental every 30 minutes
-  autoSyncInterval = window.setInterval(() => {
-    if (!enabled) return;
-    if (syncService.isCurrentlyRunning()) return;
-    syncService
-      .startIncrementalSync()
-      .catch((e) => console.warn("Auto incremental sync failed", e));
-  }, 30 * 60 * 1000);
+  autoSyncInterval = window.setInterval(
+    () => {
+      if (!enabled) return;
+      if (syncService.isCurrentlyRunning()) return;
+      syncService
+        .startIncrementalSync()
+        .catch((e) => console.warn("Auto incremental sync failed", e));
+    },
+    30 * 60 * 1000
+  );
 }
 
 // Visibility / online triggers

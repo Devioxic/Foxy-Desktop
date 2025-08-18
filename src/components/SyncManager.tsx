@@ -40,12 +40,46 @@ export default function SyncManager({ onSyncComplete }: SyncManagerProps) {
     const handleOnline = () => setIsOnline(true);
     const handleOffline = () => setIsOnline(false);
 
+    // Reflect sync progress started elsewhere (e.g., sidebar button)
+    const handleSyncProgress = (e: Event) => {
+      const { detail } = e as CustomEvent<SyncProgress>;
+      setSyncProgress(detail);
+      const running = detail.stage !== "complete";
+      setIsSyncing(running);
+      if (!running) {
+        // When sync completes, refresh counts and last sync time
+        loadSyncStatus();
+      }
+    };
+
+    const handleSyncUpdate = () => {
+      // Fallback refresh on final update events
+      loadSyncStatus();
+    };
+
+    // Initialize running state in case a sync is already in progress when opening Settings
+    try {
+      if (syncService.isCurrentlyRunning()) {
+        setIsSyncing(true);
+      }
+    } catch {}
+
     window.addEventListener("online", handleOnline);
     window.addEventListener("offline", handleOffline);
+    window.addEventListener(
+      "syncProgress",
+      handleSyncProgress as EventListener
+    );
+    window.addEventListener("syncUpdate", handleSyncUpdate);
 
     return () => {
       window.removeEventListener("online", handleOnline);
       window.removeEventListener("offline", handleOffline);
+      window.removeEventListener(
+        "syncProgress",
+        handleSyncProgress as EventListener
+      );
+      window.removeEventListener("syncUpdate", handleSyncUpdate);
     };
   }, []);
 
