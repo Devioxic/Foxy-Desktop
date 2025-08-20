@@ -97,6 +97,7 @@ const MusicPlayer: React.FC<MusicPlayerProps> = ({
     jumpToTrack,
     serverAddress,
     accessToken,
+    currentSrc,
   } = useMusicPlayer();
   const handleArtistClick = async (artistName: string) => {
     try {
@@ -257,6 +258,47 @@ const MusicPlayer: React.FC<MusicPlayerProps> = ({
   };
 
   const qualityInfo = React.useMemo(() => {
+    // Try to infer from the active URL first
+    if (currentSrc) {
+      try {
+        const url = new URL(currentSrc);
+        const isUniversal =
+          /\/universal$/i.test(url.pathname) ||
+          url.pathname.includes("/universal");
+        const maxBr = url.searchParams.get("MaxStreamingBitrate");
+        const container = (
+          url.searchParams.get("Container") || ""
+        ).toUpperCase();
+        if (isUniversal || maxBr) {
+          const kbps = maxBr ? Math.round(parseInt(maxBr, 10) / 1000) : null;
+          const parts = [container || null, kbps ? `${kbps}kbps` : null].filter(
+            Boolean
+          );
+          return { label: parts.join(" • "), source: "Transcode" };
+        }
+        // Direct/static stream
+        if (
+          url.pathname.includes("/Audio/") &&
+          url.searchParams.get("static") === "true"
+        ) {
+          // Fall through to metadata for details
+          // Mark as Direct if no universal params are present
+          const ms: any = currentTrack?.MediaSources?.[0];
+          const codec = (ms?.AudioCodec || "").toString().toUpperCase();
+          const containerMs = (ms?.Container || "").toString().toUpperCase();
+          const bitrateBps = ms?.Bitrate || ms?.BitRate;
+          const bitrateKbps = bitrateBps ? Math.round(bitrateBps / 1000) : null;
+          const showCodec =
+            codec && containerMs && codec !== containerMs ? codec : null;
+          const parts = [
+            containerMs || codec || null,
+            showCodec,
+            bitrateKbps ? `${bitrateKbps}kbps` : null,
+          ].filter(Boolean);
+          return { label: parts.join(" • "), source: "Direct" };
+        }
+      } catch {}
+    }
     const ms: any = currentTrack?.MediaSources?.[0];
     if (!ms) return null;
     // Prefer top-level, fall back to first audio MediaStream
@@ -275,6 +317,7 @@ const MusicPlayer: React.FC<MusicPlayerProps> = ({
     const codec = (ms.AudioCodec || audioStream?.Codec || "")
       .toString()
       .toUpperCase();
+    const containerMs = (ms.Container || "").toString().toUpperCase();
     const bitDepth =
       ms.BitsPerSample ||
       ms.BitDepth ||
@@ -282,7 +325,8 @@ const MusicPlayer: React.FC<MusicPlayerProps> = ({
       audioStream?.BitDepth;
     const bits = bitDepth ? `${bitDepth}-bit` : null;
     const parts = [
-      codec || null,
+      containerMs || codec || null,
+      codec && containerMs && codec !== containerMs ? codec : null,
       bits,
       sr,
       ch,
@@ -294,7 +338,7 @@ const MusicPlayer: React.FC<MusicPlayerProps> = ({
         ? "Transcode"
         : undefined;
     return { label: parts.join(" • "), source };
-  }, [currentTrack?.MediaSources, currentTrack?.Id]);
+  }, [currentTrack?.MediaSources, currentTrack?.Id, currentSrc]);
 
   if (!currentTrack) {
     return null;
