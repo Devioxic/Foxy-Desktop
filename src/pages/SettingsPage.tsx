@@ -285,26 +285,16 @@ export default function SettingsPage() {
 }
 
 function PlaybackSettingsPanel() {
-  const { volume, setVolume, quality, setQuality } = useMusicPlayer();
-  const [normalize, setNormalize] = React.useState<boolean>(
-    () => localStorage.getItem("playback_normalize") === "true"
-  );
-  const [gapless, setGapless] = React.useState<boolean>(
-    () => localStorage.getItem("playback_gapless") !== "false"
-  );
-  const [crossfade, setCrossfade] = React.useState<number>(() =>
-    parseInt(localStorage.getItem("playback_crossfade") || "0", 10)
-  );
-
-  React.useEffect(() => {
-    localStorage.setItem("playback_normalize", String(normalize));
-  }, [normalize]);
-  React.useEffect(() => {
-    localStorage.setItem("playback_gapless", String(gapless));
-  }, [gapless]);
-  React.useEffect(() => {
-    localStorage.setItem("playback_crossfade", String(crossfade));
-  }, [crossfade]);
+  const {
+    volume,
+    setVolume,
+    quality,
+    setQuality,
+    normalizeEnabled,
+    setNormalizeEnabled,
+    crossfadeSeconds,
+    setCrossfadeSeconds,
+  } = useMusicPlayer();
 
   return (
     <div className="space-y-6">
@@ -354,36 +344,27 @@ function PlaybackSettingsPanel() {
           </div>
         </div>
         <Switch
-          checked={normalize}
-          onCheckedChange={(v) => setNormalize(!!v)}
+          checked={!!normalizeEnabled}
+          onCheckedChange={(v) => setNormalizeEnabled?.(!!v)}
         />
-      </div>
-      <div className="flex items-center justify-between">
-        <div className="space-y-0.5">
-          <div className="text-sm font-medium">Gapless Playback</div>
-          <div className="text-xs text-gray-500">
-            Seamless track transitions
-          </div>
-        </div>
-        <Switch checked={gapless} onCheckedChange={(v) => setGapless(!!v)} />
       </div>
       <div className="space-y-2">
         <div className="flex items-center justify-between">
           <span className="text-sm font-medium">Crossfade (s)</span>
-          <span className="text-xs text-gray-500">{crossfade}s</span>
+          <span className="text-xs text-gray-500">{crossfadeSeconds}s</span>
         </div>
         <div className="group py-2">
           <Slider
-            value={[crossfade]}
+            value={[crossfadeSeconds || 0]}
             max={10}
             step={1}
-            onValueChange={(v) => setCrossfade(v[0])}
+            onValueChange={(v) => setCrossfadeSeconds?.(v[0] || 0)}
           />
         </div>
       </div>
-      <p className="text-[11px] text-gray-400 leading-relaxed">
-        Normalization, gapless and crossfade are UI settings only right now;
-        audio pipeline enhancements (Web Audio) would be needed for full effect.
+      <p className="text-[11px] text-gray-500 leading-relaxed">
+        Changes apply instantly. Crossfade uses smooth gain ramps; seamless
+        transitions are always on.
       </p>
     </div>
   );
