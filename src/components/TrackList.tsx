@@ -1,18 +1,13 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
+import { DropdownMenuItem } from "@/components/ui/dropdown-menu";
+import IconDropdown from "@/components/IconDropdown";
 import AddToPlaylistDialog from "@/components/AddToPlaylistDialog";
 import LyricsComponent from "@/components/LyricsComponent";
 import { useMusicPlayer } from "@/contexts/MusicContext";
 import {
   Play,
   Star,
-  MoreVertical,
   Plus,
   ListPlus,
   Loader2,
@@ -343,139 +338,75 @@ const TrackList: React.FC<TrackListProps> = React.memo(
 
               {/* Track Options Menu */}
               <div className="w-8 flex justify-center opacity-0 group-hover:opacity-100">
-                <DropdownMenu>
-                  <DropdownMenuTrigger asChild>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className="p-0.5 h-6"
-                      onClick={(e) => e.stopPropagation()}
-                    >
-                      <MoreVertical className="w-3 h-3" />
-                    </Button>
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent
-                    align="end"
-                    className="w-48"
-                    sideOffset={5}
-                  >
-                    {/* Download/Remove Download */}
-                    <DropdownMenuItem
-                      onSelect={(e) => e.preventDefault()}
-                      onClick={async (e) => {
-                        e.stopPropagation();
-                        if (!track.Id) return;
-                        const has =
-                          downloadedMap[track.Id || ""] ||
-                          !!(await getLocalUrlForTrack(track.Id));
-                        if (has) {
-                          await removeDownload(track.Id);
-                          setDownloadedMap((m) => ({
-                            ...m,
-                            [track.Id!]: false,
-                          }));
+                <IconDropdown
+                  size="xs"
+                  align="end"
+                  tooltip="More actions"
+                  menuWidthClass="w-52"
+                >
+                  <DropdownMenuItem
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      if (track.Id) {
+                        if (queue.length === 0) {
+                          // If queue is empty, start playing this track
+                          playNow(convertToMusicTrack(track));
                         } else {
-                          const ms = (track as any).MediaSources?.[0];
-                          // Prefer explicit URLs from MediaSources; otherwise build a direct static stream URL
-                          let url =
-                            ms?.DirectStreamUrl || ms?.TranscodingUrl || "";
-                          if (!url) {
-                            try {
-                              const auth = JSON.parse(
-                                localStorage.getItem("authData") || "{}"
-                              );
-                              if (auth.serverAddress && auth.accessToken) {
-                                url = `${auth.serverAddress}/Audio/${track.Id}/stream?static=true&api_key=${auth.accessToken}`;
-                              }
-                            } catch {}
-                          }
-                          if (!url) return;
-                          await downloadTrack({
-                            trackId: track.Id,
-                            name: track.Name,
-                            url,
-                            container: ms?.Container,
-                            bitrate: ms?.Bitrate,
-                          });
+                          // If queue has items, just add this track to the end
+                          addToQueue(convertToMusicTrack(track));
+                        }
+                      }
+                    }}
+                    className="cursor-pointer"
+                  >
+                    <Plus className="w-3 h-3 mr-2" />
+                    <span className="text-xs">Add to Queue</span>
+                  </DropdownMenuItem>
+                  <DropdownMenuItem
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      if (track.Id && track.Name) {
+                        setSelectedTrackForPlaylist({
+                          id: track.Id,
+                          name: track.Name,
+                        });
+                        setShowAddToPlaylist(true);
+                      }
+                    }}
+                    className="cursor-pointer"
+                  >
+                    <ListPlus className="w-3 h-3 mr-2" />
+                    <span className="text-xs">Add to Playlist</span>
+                  </DropdownMenuItem>
+                  {onToggleTrackFavorite && (
+                    <DropdownMenuItem
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        if (track.Id) {
+                          onToggleTrackFavorite(track.Id);
                         }
                       }}
                       className="cursor-pointer"
                     >
+                      {favoriteLoading[track.Id || ""] ? (
+                        <Loader2 className="w-3 h-3 mr-2 animate-spin text-gray-400" />
+                      ) : (
+                        <Star
+                          className={`w-3 h-3 mr-2 ${
+                            trackFavorites[track.Id || ""]
+                              ? "text-pink-600 fill-pink-600"
+                              : "text-gray-400"
+                          }`}
+                        />
+                      )}
                       <span className="text-xs">
-                        {downloadedMap[track.Id || ""]
-                          ? "Remove Download"
-                          : "Download"}
+                        {trackFavorites[track.Id || ""]
+                          ? "Remove from Favourites"
+                          : "Add to Favourites"}
                       </span>
                     </DropdownMenuItem>
-                    <DropdownMenuItem
-                      onSelect={(e) => {
-                        e.preventDefault();
-                        if (track.Id) {
-                          if (queue.length === 0) {
-                            // If queue is empty, start playing this track
-                            playNow(convertToMusicTrack(track));
-                          } else {
-                            // If queue has items, just add this track to the end
-                            addToQueue(convertToMusicTrack(track));
-                          }
-                        }
-                      }}
-                      onClick={(e) => {
-                        e.stopPropagation();
-                      }}
-                      className="cursor-pointer"
-                    >
-                      <Plus className="w-3 h-3 mr-2" />
-                      <span className="text-xs">Add to Queue</span>
-                    </DropdownMenuItem>
-                    <DropdownMenuItem
-                      onSelect={(e) => e.preventDefault()}
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        if (track.Id && track.Name) {
-                          setSelectedTrackForPlaylist({
-                            id: track.Id,
-                            name: track.Name,
-                          });
-                          setShowAddToPlaylist(true);
-                        }
-                      }}
-                      className="cursor-pointer"
-                    >
-                      <ListPlus className="w-3 h-3 mr-2" />
-                      <span className="text-xs">Add to Playlist</span>
-                    </DropdownMenuItem>
-                    {onToggleTrackFavorite && (
-                      <DropdownMenuItem
-                        onSelect={(e) => e.preventDefault()}
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          if (track.Id) {
-                            onToggleTrackFavorite(track.Id);
-                          }
-                        }}
-                        className="cursor-pointer"
-                      >
-                        {favoriteLoading[track.Id || ""] ? (
-                          <Loader2 className="w-3 h-3 mr-2 animate-spin text-gray-400" />
-                        ) : (
-                          <Star
-                            className={`w-3 h-3 mr-2 ${
-                              trackFavorites[track.Id || ""]
-                                ? "text-pink-600 fill-pink-600"
-                                : "text-gray-400"
-                            }`}
-                          />
-                        )}
-                        <span className="text-xs">
-                          {trackFavorites[track.Id || ""]
-                            ? "Remove from Favourites"
-                            : "Add to Favourites"}
-                        </span>
-                      </DropdownMenuItem>
-                    )}
-                  </DropdownMenuContent>
-                </DropdownMenu>
+                  )}
+                </IconDropdown>
               </div>
             </div>
           ))}

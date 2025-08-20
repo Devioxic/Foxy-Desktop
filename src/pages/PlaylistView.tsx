@@ -5,11 +5,8 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import LoadingSkeleton from "@/components/LoadingSkeleton";
 import {
-  DropdownMenu,
-  DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuSeparator,
-  DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { logger } from "@/lib/logger";
 import AddToPlaylistDialog from "@/components/AddToPlaylistDialog";
@@ -24,7 +21,6 @@ import {
   Play,
   Pause,
   Star,
-  MoreVertical,
   ArrowLeft,
   Music,
   Shuffle,
@@ -33,6 +29,7 @@ import {
   ListPlus,
   ListMusic,
   X,
+  Download,
 } from "lucide-react";
 import {
   isCollectionDownloaded,
@@ -467,11 +464,22 @@ const PlaylistView = () => {
                 Shuffle
               </Button>
               <Button
-                variant={isDownloaded ? "secondary" : "outline"}
+                variant="ghost"
+                size="sm"
                 onClick={handleToggleDownload}
                 disabled={downloading}
+                className="p-1 text-gray-600 hover:text-pink-600 hover:bg-gray-100"
+                title={isDownloaded ? "Remove download" : "Download"}
               >
-                {isDownloaded ? "Remove Download" : "Download"}
+                {downloading ? (
+                  <Loader2 className="w-4 h-4 animate-spin text-gray-400" />
+                ) : (
+                  <Download
+                    className={`w-4 h-4 ${
+                      isDownloaded ? "text-pink-600" : "text-gray-600"
+                    }`}
+                  />
+                )}
               </Button>
               <IconDropdown
                 align="start"

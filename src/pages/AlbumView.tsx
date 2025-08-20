@@ -15,11 +15,8 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import {
-  DropdownMenu,
-  DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuSeparator,
-  DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import AddToPlaylistDialog from "@/components/AddToPlaylistDialog";
 import MusicPlayer from "@/components/MusicPlayer";
@@ -32,7 +29,6 @@ import {
   Play,
   Pause,
   Star,
-  MoreVertical,
   Clock,
   ArrowLeft,
   Music,

@@ -288,6 +288,70 @@ export async function removePlaylistDownloads(playlistId: string) {
   await localDb.unmarkCollectionDownloaded(playlistId);
 }
 
+// Favourites (special, no Jellyfin playlist ID). We mark collection id as 'favourites'.
+export async function downloadFavourites(
+  name: string = "Favourites"
+): Promise<{ downloaded: number; failed: number }> {
+  const auth = JSON.parse(localStorage.getItem("authData") || "{}");
+  if (!auth.serverAddress || !auth.accessToken)
+    throw new Error("Not authenticated");
+  const { getFavorites } = await import("@/lib/jellyfin");
+  const favorites = await getFavorites(auth.serverAddress, auth.accessToken);
+  const items = (favorites?.Items || []).filter((i: any) => i?.Id);
+  let downloaded = 0;
+  let failed = 0;
+  const trackIds: string[] = [];
+  // Save track metadata locally
+  try {
+    await localDb.initialize();
+    if (items.length) await localDb.saveTracks(items as any);
+  } catch (e) {
+    logger.warn("Saving favourites tracks metadata failed", e);
+  }
+  for (const t of items as any[]) {
+    try {
+      const url = `${auth.serverAddress}/Audio/${t.Id}/stream?static=true&api_key=${auth.accessToken}`;
+      const ms = (t as any).MediaSources?.[0];
+      await downloadTrack({
+        trackId: t.Id,
+        name: t.Name,
+        url,
+        container: ms?.Container,
+        bitrate: ms?.Bitrate,
+      });
+      trackIds.push(t.Id);
+      downloaded++;
+    } catch {
+      failed++;
+    }
+  }
+  await localDb.markCollectionDownloaded("favourites", "playlist", name);
+  try {
+    await localDb.markTracksCached(trackIds);
+  } catch {}
+  try {
+    window.dispatchEvent(new Event("downloadsUpdate"));
+  } catch {}
+  return { downloaded, failed };
+}
+
+export async function removeFavouritesDownloads() {
+  await localDb.initialize();
+  const auth = JSON.parse(localStorage.getItem("authData") || "{}");
+  const { getFavorites } = await import("@/lib/jellyfin");
+  const favorites = await getFavorites(auth.serverAddress, auth.accessToken);
+  const items = (favorites?.Items || []).filter((i: any) => i?.Id);
+  for (const t of items as any[]) {
+    try {
+      await removeDownload(t.Id);
+    } catch {}
+  }
+  await localDb.unmarkCollectionDownloaded("favourites");
+  try {
+    window.dispatchEvent(new Event("downloadsUpdate"));
+  } catch {}
+}
+
 export async function clearAllDownloads(): Promise<{ removed: number } | null> {
   try {
     await localDb.initialize();

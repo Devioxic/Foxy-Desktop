@@ -46,7 +46,7 @@ const IconDropdown: React.FC<IconDropdownProps> = ({
       </DropdownMenuTrigger>
       <DropdownMenuContent
         align={align}
-        className={`w-52 rounded-md border border-gray-200 bg-white p-1 shadow-lg`}
+        className={`${menuWidthClass} rounded-md border border-gray-200 bg-white p-1 shadow-lg`}
         sideOffset={sideOffset}
       >
         {children}

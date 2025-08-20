@@ -62,6 +62,13 @@ const Downloads: React.FC = () => {
           if (p) playlists.push(p);
         } catch {}
       }
+      // If favourites is downloaded, include a synthetic playlist card
+      if (
+        playlistIds.includes("favourites") &&
+        !playlists.find((p) => p?.Id === "favourites")
+      ) {
+        playlists.push({ Id: "favourites", Name: "Favourites" });
+      }
       setAlbumItems(albums);
       setPlaylistItems(playlists);
     };
