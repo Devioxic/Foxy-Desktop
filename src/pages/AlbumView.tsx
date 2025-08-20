@@ -162,6 +162,18 @@ const AlbumView = () => {
     setShowLyrics(show);
   };
 
+  // Derive a displayable album artist from available props (handles local DB cases)
+  const albumArtistName = React.useMemo(() => {
+    const ai: any = albumInfo as any;
+    return (
+      albumInfo?.AlbumArtist ||
+      (Array.isArray(albumInfo?.Artists) ? albumInfo?.Artists[0] : undefined) ||
+      ai?.AlbumArtists?.[0]?.Name ||
+      ai?.ArtistItems?.[0]?.Name ||
+      "Unknown Artist"
+    );
+  }, [albumInfo]);
+
   const toggleAlbumFavorite = async () => {
     if (!albumInfo?.Id || !authData.accessToken || !authData.serverAddress)
       return;
@@ -222,10 +234,10 @@ const AlbumView = () => {
 
   useEffect(() => {
     if (albumId) {
-  loadAlbumData();
-  const onDl = () => loadAlbumData();
-  window.addEventListener("downloadsUpdate", onDl);
-  return () => window.removeEventListener("downloadsUpdate", onDl);
+      loadAlbumData();
+      const onDl = () => loadAlbumData();
+      window.addEventListener("downloadsUpdate", onDl);
+      return () => window.removeEventListener("downloadsUpdate", onDl);
     }
   }, [albumId]);
 
@@ -285,27 +297,32 @@ const AlbumView = () => {
 
       // Check favorite status for all tracks
       if (Array.isArray(albumTracks) && albumTracks.length > 0) {
-        const trackFavoritePromises = (albumTracks as any[]).map(async (track: any) => {
-          if (track.Id) {
-            try {
-              const isFavorite = await checkIsFavorite(
-                authData.serverAddress,
-                authData.accessToken,
-                track.Id
-              );
-              return { id: track.Id, isFavorite };
-            } catch (error) {
-              logger.error(
-                `Failed to check favorite status for track ${track.Id}:`,
-                error
-              );
-              return { id: track.Id, isFavorite: false };
+        const trackFavoritePromises = (albumTracks as any[]).map(
+          async (track: any) => {
+            if (track.Id) {
+              try {
+                const isFavorite = await checkIsFavorite(
+                  authData.serverAddress,
+                  authData.accessToken,
+                  track.Id
+                );
+                return { id: track.Id, isFavorite };
+              } catch (error) {
+                logger.error(
+                  `Failed to check favorite status for track ${track.Id}:`,
+                  error
+                );
+                return { id: track.Id, isFavorite: false };
+              }
             }
+            return null;
           }
-          return null;
-        });
+        );
 
-        const trackFavoriteResults: Array<{ id: string; isFavorite: boolean } | null> = await Promise.all(trackFavoritePromises);
+        const trackFavoriteResults: Array<{
+          id: string;
+          isFavorite: boolean;
+        } | null> = await Promise.all(trackFavoritePromises);
         const trackFavoriteMap: Record<string, boolean> = {};
 
         trackFavoriteResults.forEach((result) => {
@@ -466,18 +483,10 @@ const AlbumView = () => {
                   </h2>
                   <button
                     className="inline-flex items-center gap-1 text-sm text-gray-700 hover:text-pink-600 hover:underline cursor-pointer transition-colors"
-                    onClick={() =>
-                      handleArtistClick(
-                        albumInfo.AlbumArtist ||
-                          albumInfo.Artists?.[0] ||
-                          "Unknown Artist"
-                      )
-                    }
+                    onClick={() => handleArtistClick(albumArtistName)}
                   >
                     <User2 size={14} />
-                    {albumInfo.AlbumArtist ||
-                      albumInfo.Artists?.[0] ||
-                      "Unknown Artist"}
+                    {albumArtistName}
                   </button>
                 </div>
 

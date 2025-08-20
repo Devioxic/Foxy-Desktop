@@ -262,6 +262,23 @@ const MusicPlayer: React.FC<MusicPlayerProps> = ({
     if (currentSrc) {
       try {
         const url = new URL(currentSrc);
+        // Local downloaded file via custom media:/// protocol
+        if (url.protocol === "media:") {
+          const ms: any = currentTrack?.MediaSources?.[0];
+          const codec = (ms?.AudioCodec || "").toString().toUpperCase();
+          const containerMs = (ms?.Container || "").toString().toUpperCase();
+          const bitrateBps = ms?.Bitrate || ms?.BitRate;
+          const bitrateKbps = bitrateBps ? Math.round(bitrateBps / 1000) : null;
+          const showCodec =
+            codec && containerMs && codec !== containerMs ? codec : null;
+          const parts = [
+            containerMs || codec || null,
+            showCodec,
+            bitrateKbps ? `${bitrateKbps}kbps` : null,
+          ].filter(Boolean);
+          const label = parts.join(" • ") || "Local file";
+          return { label, source: "Local" };
+        }
         const isUniversal =
           /\/universal$/i.test(url.pathname) ||
           url.pathname.includes("/universal");

@@ -1,4 +1,4 @@
-import { app, BrowserWindow, shell, ipcMain } from "electron";
+import { app, BrowserWindow, shell, ipcMain, protocol } from "electron";
 import * as path from "path";
 import * as fs from "fs";
 import { logger } from "./lib/logger";
@@ -18,6 +18,7 @@ const createWindow = async () => {
       contextIsolation: true,
       nodeIntegration: false,
       sandbox: false,
+      devTools: true,
     },
     autoHideMenuBar: true,
     icon: path.join(__dirname, "../public/icon.png"),
@@ -46,7 +47,22 @@ const createWindow = async () => {
   });
 
   win.setMenu(null); // Hide the menu bar
+  win.webContents.openDevTools();
 };
+
+// Register custom protocol before app is ready
+protocol.registerSchemesAsPrivileged([
+  {
+    scheme: "media",
+    privileges: {
+      standard: true,
+      secure: true,
+      supportFetchAPI: true,
+      corsEnabled: true,
+      stream: true,
+    },
+  },
+]);
 
 app.whenReady().then(async () => {
   // IPC for database persistence
@@ -124,8 +140,9 @@ app.whenReady().then(async () => {
       const safeRel = relativePath.replace(/\\/g, "/").replace(/\.+/g, ".");
       const fullPath = path.join(mediaDir, safeRel);
       if (!fs.existsSync(fullPath)) return null;
-      const url = `file://${fullPath.replace(/ /g, "%20")}`;
-      return url;
+      // Return custom protocol URL instead of file:// to avoid renderer restrictions
+      const customUrl = `media:///${encodeURI(safeRel)}`;
+      return customUrl;
     } catch (e) {
       logger.error("media:getFileUrl failed", e);
       return null;
@@ -136,6 +153,30 @@ app.whenReady().then(async () => {
   ipcMain.handle("media:getDir", async () => {
     return mediaDir;
   });
+
+  // Register media:// protocol to serve files from the userData/media directory BEFORE window loads
+  try {
+    protocol.registerFileProtocol("media", (request, callback) => {
+      try {
+        const url = new URL(request.url);
+        // Allow both media:///rel and media://host/rel
+        const host = url.host || "";
+        const pathname = url.pathname || "";
+        const joined = host
+          ? `${host}${pathname}`
+          : pathname.replace(/^\//, "");
+        const rel = decodeURI(joined);
+        const safeRel = rel.replace(/\\/g, "/").replace(/\.\./g, "");
+        const fullPath = path.join(mediaDir, safeRel);
+        callback({ path: fullPath });
+      } catch (err) {
+        logger.error("media protocol handler error", err);
+        callback({ error: -2 }); // FILE_NOT_FOUND
+      }
+    });
+  } catch (e) {
+    logger.error("Failed to register media:// protocol", e);
+  }
 
   await createWindow();
 

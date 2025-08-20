@@ -3,7 +3,7 @@ import { logger } from "./logger";
 
 // Contract:
 // - downloadTrack: fetches audio for a trackId using provided URL, saves to userData/media, records in DB.
-// - getLocalUrlForTrack: returns file:// URL if downloaded, else null.
+// - getLocalUrlForTrack: returns media:/// URL if downloaded, else null.
 // - removeDownload: deletes file and DB row.
 
 const toSafeFilename = (s: string) =>
@@ -65,7 +65,9 @@ export async function downloadTrack(params: {
       });
       // Persist track metadata locally so UI shows proper titles/artists
       try {
-        const { getAudioStreamInfo, getAlbumInfo } = await import("@/lib/jellyfin");
+        const { getAudioStreamInfo, getAlbumInfo } = await import(
+          "@/lib/jellyfin"
+        );
         const auth = JSON.parse(localStorage.getItem("authData") || "{}");
         if (auth.serverAddress && auth.accessToken) {
           const info = await getAudioStreamInfo(
@@ -86,7 +88,10 @@ export async function downloadTrack(params: {
                 );
                 if (album) await localDb.saveAlbums([album as any]);
               } catch (e) {
-                logger.warn("Saving album metadata after track download failed", e);
+                logger.warn(
+                  "Saving album metadata after track download failed",
+                  e
+                );
               }
             }
           }
@@ -101,7 +106,8 @@ export async function downloadTrack(params: {
       try {
         window.dispatchEvent(new Event("downloadsUpdate"));
       } catch {}
-      return `file://${savedPath.replace(/ /g, "%20")}`;
+      // Return the custom protocol URL used by the app to load local files
+      return `media:///${encodeURI(rel)}`;
     }
     return null;
   } catch (e) {

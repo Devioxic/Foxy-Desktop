@@ -577,7 +577,10 @@ export class HybridDataService {
       );
       if (online) return online;
     } catch (error) {
-      logger.warn("Server album fetch failed, attempting local fallback", error);
+      logger.warn(
+        "Server album fetch failed, attempting local fallback",
+        error
+      );
     }
 
     // Final local fallback regardless of useLocalFirst
@@ -618,7 +621,10 @@ export class HybridDataService {
       const items = result.Items || [];
       if (items.length) return items;
     } catch (error) {
-      logger.warn("Server album tracks fetch failed, attempting local fallback", error);
+      logger.warn(
+        "Server album tracks fetch failed, attempting local fallback",
+        error
+      );
     }
 
     // Final local fallback

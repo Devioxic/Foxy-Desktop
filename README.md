@@ -26,8 +26,8 @@ Download the latest release for your platform from the [releases page](https://g
 ## Roadmap
 - [x] Add a full library search
 - [x] Add support for crossfade and more playback settings
+- [x] Offline playback support
 - [ ] Add support for more themes
-- [ ] Offline playback support
 - [ ] Discord Rich Presence integration
 
 ## Bugs? Suggestions?

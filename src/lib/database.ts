@@ -602,11 +602,16 @@ class LocalDatabase {
         existing = (await this.getTrackById(track.Id!)) as any;
       } catch {}
 
-      const pick = <T>(n: T | undefined, e: T | undefined, preferEmpty = false): T | undefined => {
+      const pick = <T>(
+        n: T | undefined,
+        e: T | undefined,
+        preferEmpty = false
+      ): T | undefined => {
         if (n === undefined || n === null) return e;
         if (!preferEmpty) {
           if (Array.isArray(n) && n.length === 0) return e;
-          if (typeof n === "object" && n && Object.keys(n as any).length === 0) return e;
+          if (typeof n === "object" && n && Object.keys(n as any).length === 0)
+            return e;
         }
         return n;
       };
@@ -617,17 +622,41 @@ class LocalDatabase {
         AlbumId: pick(track.AlbumId as any, existing?.AlbumId as any),
         Album: pick(track.Album, existing?.Album),
         Artists: pick(track.Artists as any, existing?.Artists as any),
-        ArtistItems: pick(track.ArtistItems as any, existing?.ArtistItems as any),
-        AlbumArtist: pick(track.AlbumArtist as any, existing?.AlbumArtist as any),
+        ArtistItems: pick(
+          track.ArtistItems as any,
+          existing?.ArtistItems as any
+        ),
+        AlbumArtist: pick(
+          track.AlbumArtist as any,
+          existing?.AlbumArtist as any
+        ),
         Genres: pick(track.Genres as any, existing?.Genres as any),
-        IndexNumber: pick(track.IndexNumber as any, existing?.IndexNumber as any),
-        ParentIndexNumber: pick(track.ParentIndexNumber as any, existing?.ParentIndexNumber as any),
-        RunTimeTicks: pick(track.RunTimeTicks as any, existing?.RunTimeTicks as any),
-        ProductionYear: pick(track.ProductionYear as any, existing?.ProductionYear as any),
+        IndexNumber: pick(
+          track.IndexNumber as any,
+          existing?.IndexNumber as any
+        ),
+        ParentIndexNumber: pick(
+          track.ParentIndexNumber as any,
+          existing?.ParentIndexNumber as any
+        ),
+        RunTimeTicks: pick(
+          track.RunTimeTicks as any,
+          existing?.RunTimeTicks as any
+        ),
+        ProductionYear: pick(
+          track.ProductionYear as any,
+          existing?.ProductionYear as any
+        ),
         ImageTags: pick(track.ImageTags as any, existing?.ImageTags as any),
-        ImageBlurHashes: pick(track.ImageBlurHashes as any, existing?.ImageBlurHashes as any),
+        ImageBlurHashes: pick(
+          track.ImageBlurHashes as any,
+          existing?.ImageBlurHashes as any
+        ),
         UserData: pick(track.UserData as any, existing?.UserData as any),
-        MediaSources: pick(track.MediaSources as any, existing?.MediaSources as any),
+        MediaSources: pick(
+          track.MediaSources as any,
+          existing?.MediaSources as any
+        ),
         ChapterImagesDateModified: pick(
           (track as any).ChapterImagesDateModified,
           (existing as any)?.ChapterImagesDateModified
@@ -1039,14 +1068,22 @@ class LocalDatabase {
   }
 
   private rowToAlbum(row: any): BaseItemDto {
+    const albumArtists = JSON.parse(row.album_artists || "[]");
+    const artistItems = JSON.parse(row.artist_items || "[]");
+    const derivedAlbumArtist =
+      (Array.isArray(albumArtists) && albumArtists[0]?.Name) ||
+      (Array.isArray(artistItems) && artistItems[0]?.Name) ||
+      undefined;
+
     return {
       Id: row.id,
       Name: row.name,
       Overview: row.overview,
       ProductionYear: row.production_year,
       Genres: JSON.parse(row.genres || "[]"),
-      AlbumArtists: JSON.parse(row.album_artists || "[]"),
-      ArtistItems: JSON.parse(row.artist_items || "[]"),
+      AlbumArtists: albumArtists,
+      ArtistItems: artistItems,
+      AlbumArtist: derivedAlbumArtist,
       ImageTags: JSON.parse(row.image_tags || "{}"),
       ImageBlurHashes: JSON.parse(row.image_blur_hashes || "{}"),
       BackdropImageTags: JSON.parse(row.backdrop_image_tags || "[]"),
