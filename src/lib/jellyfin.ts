@@ -561,7 +561,14 @@ export const getAudioStreamInfo = async (
     // Get item details with media sources
     const response = await itemsApi.getItems({
       ids: [itemId],
-      fields: [ItemFields.MediaSources, ItemFields.Path],
+      fields: [
+        ItemFields.MediaSources,
+        ItemFields.Path,
+        ItemFields.PrimaryImageAspectRatio,
+        ItemFields.MediaSourceCount,
+        ItemFields.Genres,
+        ItemFields.DateCreated,
+      ],
     });
 
     const item = response.data.Items?.[0];
@@ -678,6 +685,36 @@ export const searchItems = async (
   } catch (error) {
     logger.error("Error searching items:", error);
     throw error;
+  }
+};
+
+// Fetch multiple items by IDs with optional fields
+export const getItemsByIds = async (
+  ids: string[],
+  fields: ItemFields[] = [
+    ItemFields.MediaSources,
+    ItemFields.Genres,
+    ItemFields.DateCreated,
+    ItemFields.Path,
+    ItemFields.PrimaryImageAspectRatio,
+  ]
+) => {
+  if (!ids.length) return [] as any[];
+  try {
+    const authData = JSON.parse(localStorage.getItem("authData") || "{}");
+    if (!authData.serverAddress || !authData.accessToken) {
+      throw new Error("No authentication data found");
+    }
+    const api = jellyfin.createApi(
+      authData.serverAddress,
+      authData.accessToken
+    );
+    const itemsApi = getItemsApi(api);
+    const response = await itemsApi.getItems({ ids, fields });
+    return response.data.Items || [];
+  } catch (error) {
+    logger.error("Error getting items by ids:", error);
+    return [] as any[];
   }
 };
 

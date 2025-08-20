@@ -553,35 +553,38 @@ export class HybridDataService {
     id: string,
     forceOnline: boolean = false
   ): Promise<BaseItemDto | null> {
+    // Optionally try local first
     if (!forceOnline && this.useLocalFirst) {
       try {
         await localDb.initialize();
         const localAlbum = await localDb.getAlbumById(id);
-        if (localAlbum) {
-          return localAlbum;
-        }
+        if (localAlbum) return localAlbum;
       } catch (error) {
-        logger.warn(
-          "Failed to get album from local database, falling back to server:",
-          error
-        );
+        logger.warn("Local album lookup failed", error);
       }
     }
 
-    // Fall back to server
-
+    // Try server
     try {
       const authData = JSON.parse(localStorage.getItem("authData") || "{}");
       if (!authData.serverAddress || !authData.accessToken) {
         throw new Error("Authentication data not found");
       }
-      return await getAlbumInfo(
+      const online = await getAlbumInfo(
         authData.serverAddress,
         authData.accessToken,
         id
       );
+      if (online) return online;
     } catch (error) {
-      logger.error("Failed to fetch album from server:", error);
+      logger.warn("Server album fetch failed, attempting local fallback", error);
+    }
+
+    // Final local fallback regardless of useLocalFirst
+    try {
+      await localDb.initialize();
+      return (await localDb.getAlbumById(id)) as any;
+    } catch (e) {
       return null;
     }
   }
@@ -590,23 +593,18 @@ export class HybridDataService {
     albumId: string,
     forceOnline: boolean = false
   ): Promise<BaseItemDto[]> {
+    // Optionally try local first
     if (!forceOnline && this.useLocalFirst) {
       try {
         await localDb.initialize();
         const localTracks = await localDb.getTracksByAlbumId(albumId);
-        if (localTracks.length > 0) {
-          return localTracks;
-        }
+        if (localTracks.length > 0) return localTracks;
       } catch (error) {
-        logger.warn(
-          "Failed to get album tracks from local database, falling back to server:",
-          error
-        );
+        logger.warn("Local album tracks lookup failed", error);
       }
     }
 
-    // Fall back to server
-
+    // Try server
     try {
       const authData = JSON.parse(localStorage.getItem("authData") || "{}");
       if (!authData.serverAddress || !authData.accessToken) {
@@ -617,9 +615,17 @@ export class HybridDataService {
         authData.accessToken,
         albumId
       );
-      return result.Items || [];
+      const items = result.Items || [];
+      if (items.length) return items;
     } catch (error) {
-      logger.error("Failed to fetch album tracks from server:", error);
+      logger.warn("Server album tracks fetch failed, attempting local fallback", error);
+    }
+
+    // Final local fallback
+    try {
+      await localDb.initialize();
+      return await localDb.getTracksByAlbumId(albumId);
+    } catch (e) {
       return [];
     }
   }

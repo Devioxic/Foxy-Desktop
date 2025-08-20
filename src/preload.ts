@@ -14,4 +14,21 @@ contextBridge.exposeInMainWorld("electronAPI", {
     const result = await ipcRenderer.invoke("db:load");
     return result ?? null;
   },
+  // Media persistence helpers
+  mediaSave: async (relativePath: string, data: Uint8Array | ArrayBuffer) => {
+    const buffer =
+      data instanceof Uint8Array
+        ? data.buffer.slice(data.byteOffset, data.byteOffset + data.byteLength)
+        : data;
+    return ipcRenderer.invoke("media:save", relativePath, buffer);
+  },
+  mediaDelete: async (relativePath: string) => {
+    return ipcRenderer.invoke("media:delete", relativePath);
+  },
+  mediaGetFileUrl: async (relativePath: string) => {
+    return ipcRenderer.invoke("media:getFileUrl", relativePath);
+  },
+  mediaGetDir: async () => {
+    return ipcRenderer.invoke("media:getDir");
+  },
 });

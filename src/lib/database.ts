@@ -123,6 +123,26 @@ const SCHEMA = `
   CREATE INDEX IF NOT EXISTS idx_sync_timestamp ON artists(sync_timestamp);
   CREATE INDEX IF NOT EXISTS idx_album_sync_timestamp ON albums(sync_timestamp);
   CREATE INDEX IF NOT EXISTS idx_track_sync_timestamp ON tracks(sync_timestamp);
+
+  -- Downloads table: track media downloaded locally
+  CREATE TABLE IF NOT EXISTS downloads (
+    track_id TEXT PRIMARY KEY,
+    file_rel_path TEXT NOT NULL, -- relative to userData/media
+    container TEXT,
+    bitrate INTEGER, -- bps
+    size_bytes INTEGER,
+    downloaded_at INTEGER DEFAULT (strftime('%s', 'now')),
+    source_server TEXT,
+    checksum TEXT
+  );
+
+  -- Downloaded collections (albums/playlists/artists)
+  CREATE TABLE IF NOT EXISTS downloaded_collections (
+    id TEXT PRIMARY KEY,
+    type TEXT NOT NULL CHECK (type IN ('album','playlist','artist')),
+    name TEXT,
+    downloaded_at INTEGER DEFAULT (strftime('%s', 'now'))
+  );
 `;
 
 interface SyncStatus {
@@ -188,6 +208,24 @@ class LocalDatabase {
       // Run schema creation
       this.db.exec(SCHEMA);
 
+      // Lightweight migrations: add cached flags if missing
+      try {
+        this.db.exec(
+          "ALTER TABLE albums ADD COLUMN is_cached INTEGER DEFAULT 0"
+        );
+      } catch (e) {}
+      try {
+        this.db.exec("ALTER TABLE albums ADD COLUMN cached_at INTEGER");
+      } catch (e) {}
+      try {
+        this.db.exec(
+          "ALTER TABLE tracks ADD COLUMN is_cached INTEGER DEFAULT 0"
+        );
+      } catch (e) {}
+      try {
+        this.db.exec("ALTER TABLE tracks ADD COLUMN cached_at INTEGER");
+      } catch (e) {}
+
       // Save the database
       await this.saveDatabase();
 
@@ -237,6 +275,120 @@ class LocalDatabase {
     }
   }
 
+  // Downloads API
+  async upsertDownload(entry: {
+    track_id: string;
+    file_rel_path: string;
+    container?: string | null;
+    bitrate?: number | null;
+    size_bytes?: number | null;
+    source_server?: string | null;
+    checksum?: string | null;
+  }): Promise<void> {
+    if (!this.db) throw new Error("Database not initialized");
+    const stmt = this.db.prepare(`
+      INSERT INTO downloads (track_id, file_rel_path, container, bitrate, size_bytes, source_server, checksum)
+      VALUES (?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT(track_id) DO UPDATE SET
+        file_rel_path=excluded.file_rel_path,
+        container=excluded.container,
+        bitrate=excluded.bitrate,
+        size_bytes=excluded.size_bytes,
+        source_server=excluded.source_server,
+        checksum=excluded.checksum
+    `);
+    stmt.run([
+      entry.track_id,
+      entry.file_rel_path,
+      entry.container ?? null,
+      entry.bitrate ?? null,
+      entry.size_bytes ?? null,
+      entry.source_server ?? null,
+      entry.checksum ?? null,
+    ]);
+    stmt.free();
+    await this.saveDatabase();
+  }
+
+  async removeDownload(trackId: string): Promise<void> {
+    if (!this.db) throw new Error("Database not initialized");
+    const stmt = this.db.prepare(`DELETE FROM downloads WHERE track_id = ?`);
+    stmt.run([trackId]);
+    stmt.free();
+    await this.saveDatabase();
+  }
+
+  async getDownload(trackId: string): Promise<{
+    track_id: string;
+    file_rel_path: string;
+    container?: string;
+    bitrate?: number;
+    size_bytes?: number;
+  } | null> {
+    const results = this.exec(`SELECT * FROM downloads WHERE track_id = ?`, [
+      trackId,
+    ]);
+    return results[0] || null;
+  }
+
+  async getAllDownloads(): Promise<
+    Array<{
+      track_id: string;
+      file_rel_path: string;
+      container?: string;
+      bitrate?: number;
+      size_bytes?: number;
+    }>
+  > {
+    return this.exec(
+      `SELECT * FROM downloads ORDER BY downloaded_at DESC`
+    ) as any[];
+  }
+
+  async clearDownloads(): Promise<void> {
+    if (!this.db) throw new Error("Database not initialized");
+    this.exec(`DELETE FROM downloads`);
+    await this.saveDatabase();
+  }
+
+  async markCollectionDownloaded(
+    id: string,
+    type: "album" | "playlist" | "artist",
+    name?: string
+  ) {
+    if (!this.db) throw new Error("Database not initialized");
+    const stmt = this.db.prepare(
+      `INSERT OR REPLACE INTO downloaded_collections (id, type, name, downloaded_at) VALUES (?, ?, ?, strftime('%s','now'))`
+    );
+    stmt.run([id, type, name || null]);
+    stmt.free();
+    await this.saveDatabase();
+  }
+
+  async unmarkCollectionDownloaded(id: string) {
+    if (!this.db) throw new Error("Database not initialized");
+    const stmt = this.db.prepare(
+      `DELETE FROM downloaded_collections WHERE id = ?`
+    );
+    stmt.run([id]);
+    stmt.free();
+    await this.saveDatabase();
+  }
+
+  async getDownloadedCollections(): Promise<
+    Array<{ id: string; type: string; name?: string }>
+  > {
+    return this.exec(
+      `SELECT * FROM downloaded_collections ORDER BY downloaded_at DESC`
+    ) as any[];
+  }
+
+  async clearDownloadedCollections(): Promise<void> {
+    if (!this.db) throw new Error("Database not initialized");
+    this.exec(`DELETE FROM downloaded_collections`);
+    await this.saveDatabase();
+  }
+
   async close(): Promise<void> {
     if (this.db) {
       await this.saveDatabase();
@@ -252,6 +404,15 @@ class LocalDatabase {
 
     try {
       const stmt = this.db.prepare(sql);
+      if (params && params.length) {
+        try {
+          stmt.bind(params);
+        } catch (e) {
+          // In case of mismatch, log and continue to attempt execution
+          // eslint-disable-next-line no-console
+          console.warn("SQL bind failed for:", sql, params, e);
+        }
+      }
       const results = [];
       while (stmt.step()) {
         results.push(stmt.getAsObject());
@@ -435,25 +596,63 @@ class LocalDatabase {
     `);
 
     for (const track of tracks) {
+      // Merge with existing to avoid overwriting fields with null/empty values
+      let existing: BaseItemDto | null = null;
+      try {
+        existing = (await this.getTrackById(track.Id!)) as any;
+      } catch {}
+
+      const pick = <T>(n: T | undefined, e: T | undefined, preferEmpty = false): T | undefined => {
+        if (n === undefined || n === null) return e;
+        if (!preferEmpty) {
+          if (Array.isArray(n) && n.length === 0) return e;
+          if (typeof n === "object" && n && Object.keys(n as any).length === 0) return e;
+        }
+        return n;
+      };
+
+      const merged = {
+        Id: track.Id,
+        Name: pick(track.Name, existing?.Name),
+        AlbumId: pick(track.AlbumId as any, existing?.AlbumId as any),
+        Album: pick(track.Album, existing?.Album),
+        Artists: pick(track.Artists as any, existing?.Artists as any),
+        ArtistItems: pick(track.ArtistItems as any, existing?.ArtistItems as any),
+        AlbumArtist: pick(track.AlbumArtist as any, existing?.AlbumArtist as any),
+        Genres: pick(track.Genres as any, existing?.Genres as any),
+        IndexNumber: pick(track.IndexNumber as any, existing?.IndexNumber as any),
+        ParentIndexNumber: pick(track.ParentIndexNumber as any, existing?.ParentIndexNumber as any),
+        RunTimeTicks: pick(track.RunTimeTicks as any, existing?.RunTimeTicks as any),
+        ProductionYear: pick(track.ProductionYear as any, existing?.ProductionYear as any),
+        ImageTags: pick(track.ImageTags as any, existing?.ImageTags as any),
+        ImageBlurHashes: pick(track.ImageBlurHashes as any, existing?.ImageBlurHashes as any),
+        UserData: pick(track.UserData as any, existing?.UserData as any),
+        MediaSources: pick(track.MediaSources as any, existing?.MediaSources as any),
+        ChapterImagesDateModified: pick(
+          (track as any).ChapterImagesDateModified,
+          (existing as any)?.ChapterImagesDateModified
+        ),
+      } as BaseItemDto;
+
       stmt.run([
-        track.Id,
-        track.Name,
-        track.AlbumId || null,
-        track.Album || null,
-        JSON.stringify(track.Artists || []),
-        JSON.stringify(track.ArtistItems || []),
-        track.AlbumArtist || null,
-        JSON.stringify(track.Genres || []),
-        track.IndexNumber || null,
-        track.ParentIndexNumber || null,
-        track.IndexNumber || null, // track_number
-        track.RunTimeTicks || 0,
-        track.ProductionYear || null,
-        JSON.stringify(track.ImageTags || {}),
-        JSON.stringify(track.ImageBlurHashes || {}),
-        JSON.stringify(track.UserData || {}),
-        JSON.stringify(track.MediaSources || []),
-        null, // ChapterImagesDateModified not available in BaseItemDto
+        merged.Id,
+        merged.Name,
+        (merged as any).AlbumId || null,
+        merged.Album || null,
+        JSON.stringify(merged.Artists || []),
+        JSON.stringify(merged.ArtistItems || []),
+        merged.AlbumArtist || null,
+        JSON.stringify(merged.Genres || []),
+        merged.IndexNumber || null,
+        merged.ParentIndexNumber || null,
+        merged.IndexNumber || null, // track_number
+        merged.RunTimeTicks || 0,
+        merged.ProductionYear || null,
+        JSON.stringify(merged.ImageTags || {}),
+        JSON.stringify(merged.ImageBlurHashes || {}),
+        JSON.stringify(merged.UserData || {}),
+        JSON.stringify(merged.MediaSources || []),
+        (merged as any).ChapterImagesDateModified || null,
         timestamp,
         timestamp,
       ]);
@@ -498,6 +697,97 @@ class LocalDatabase {
       [`%"${artistId}"%`]
     );
     return results.map((row) => this.rowToTrack(row));
+  }
+
+  async getTrackById(id: string): Promise<BaseItemDto | null> {
+    const results = this.exec(`SELECT * FROM tracks WHERE id = ?`, [id]);
+    return results.length ? this.rowToTrack(results[0]) : null;
+  }
+
+  async getTracksByIds(ids: string[]): Promise<BaseItemDto[]> {
+    if (!ids.length) return [];
+    const placeholders = ids.map(() => "?").join(",");
+    const results = this.exec(
+      `SELECT * FROM tracks WHERE id IN (${placeholders})`,
+      ids
+    );
+    return results.map((row) => this.rowToTrack(row));
+  }
+
+  async getCachedTracks(): Promise<BaseItemDto[]> {
+    const results = this.exec(
+      `SELECT * FROM tracks WHERE is_cached = 1 ORDER BY coalesce(cached_at, updated_at) DESC, name COLLATE NOCASE`
+    );
+    return results.map((row) => this.rowToTrack(row));
+  }
+
+  async getCachedTrackIds(): Promise<string[]> {
+    const results = this.exec(`SELECT id FROM tracks WHERE is_cached = 1`);
+    return results.map((r) => String(r.id));
+  }
+
+  async getCachedAlbums(): Promise<BaseItemDto[]> {
+    const results = this.exec(
+      `SELECT * FROM albums WHERE is_cached = 1 ORDER BY coalesce(cached_at, updated_at) DESC, name COLLATE NOCASE`
+    );
+    return results.map((row) => this.rowToAlbum(row));
+  }
+
+  async getCachedAlbumIds(): Promise<string[]> {
+    const results = this.exec(`SELECT id FROM albums WHERE is_cached = 1`);
+    return results.map((r) => String(r.id));
+  }
+
+  async getAlbumIdsWithCachedTracks(): Promise<string[]> {
+    const results = this.exec(
+      `SELECT DISTINCT album_id as id FROM tracks WHERE is_cached = 1 AND album_id IS NOT NULL`
+    );
+    return results.map((r) => String(r.id));
+  }
+
+  // Mark tracks/albums as locally cached (downloaded)
+  async markTracksCached(ids: string[]): Promise<void> {
+    if (!ids.length) return;
+    if (!this.db) throw new Error("Database not initialized");
+    const placeholders = ids.map(() => "?").join(",");
+    this.exec(
+      `UPDATE tracks SET is_cached = 1, cached_at = strftime('%s','now') WHERE id IN (${placeholders})`,
+      ids
+    );
+    await this.saveDatabase();
+  }
+
+  async markAlbumsCached(ids: string[]): Promise<void> {
+    if (!ids.length) return;
+    if (!this.db) throw new Error("Database not initialized");
+    const placeholders = ids.map(() => "?").join(",");
+    this.exec(
+      `UPDATE albums SET is_cached = 1, cached_at = strftime('%s','now') WHERE id IN (${placeholders})`,
+      ids
+    );
+    await this.saveDatabase();
+  }
+
+  async unmarkTracksCached(ids: string[]): Promise<void> {
+    if (!ids.length) return;
+    if (!this.db) throw new Error("Database not initialized");
+    const placeholders = ids.map(() => "?").join(",");
+    this.exec(
+      `UPDATE tracks SET is_cached = 0 WHERE id IN (${placeholders})`,
+      ids
+    );
+    await this.saveDatabase();
+  }
+
+  async unmarkAlbumsCached(ids: string[]): Promise<void> {
+    if (!ids.length) return;
+    if (!this.db) throw new Error("Database not initialized");
+    const placeholders = ids.map(() => "?").join(",");
+    this.exec(
+      `UPDATE albums SET is_cached = 0 WHERE id IN (${placeholders})`,
+      ids
+    );
+    await this.saveDatabase();
   }
 
   // New: search tracks by (partial) name

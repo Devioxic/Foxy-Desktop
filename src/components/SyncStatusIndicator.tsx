@@ -30,8 +30,17 @@ export default function SyncStatusIndicator({
   const [isOnline, setIsOnline] = useState(navigator.onLine);
   const [isSyncing, setIsSyncing] = useState(false);
   const [syncProgress, setSyncProgress] = useState<SyncProgress | null>(null);
-  const [syncStatus, setSyncStatus] = useState<any>(null);
-  const [lastSyncTime, setLastSyncTime] = useState<string>("Never");
+  const [syncStatus, setSyncStatus] = useState<any>(() => {
+    try {
+      const cached = localStorage.getItem("syncStatus.cache");
+      return cached ? JSON.parse(cached) : null;
+    } catch {
+      return null;
+    }
+  });
+  const [lastSyncTime, setLastSyncTime] = useState<string>(
+    () => localStorage.getItem("syncStatus.last") || "Never"
+  );
 
   useEffect(() => {
     loadSyncStatus();
@@ -66,6 +75,9 @@ export default function SyncStatusIndicator({
       const status = await syncService.getSyncStatus();
       setSyncStatus(status);
       setIsSyncing(syncService.isCurrentlyRunning());
+      try {
+        localStorage.setItem("syncStatus.cache", JSON.stringify(status));
+      } catch {}
 
       // Update last sync time based on the loaded status
       if (status && status.lastFullSync > 0) {
@@ -83,8 +95,14 @@ export default function SyncStatusIndicator({
           newLastSyncTime = "Recently";
         }
         setLastSyncTime(newLastSyncTime);
+        try {
+          localStorage.setItem("syncStatus.last", newLastSyncTime);
+        } catch {}
       } else {
         setLastSyncTime("Never");
+        try {
+          localStorage.setItem("syncStatus.last", "Never");
+        } catch {}
       }
     } catch (error) {
       logger.warn("Failed to load sync status:", error);

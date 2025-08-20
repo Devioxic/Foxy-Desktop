@@ -1,7 +1,15 @@
 import React, { useMemo } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import UserProfile from "@/components/UserProfile";
-import { Home, Users, Disc3, ListMusic, Star } from "lucide-react";
+import {
+  Home,
+  Users,
+  Disc3,
+  ListMusic,
+  Star,
+  Search,
+  Download,
+} from "lucide-react";
 
 interface SidebarProps {
   activeSection?: string;
@@ -27,6 +35,7 @@ const Sidebar: React.FC<SidebarProps> = React.memo(
       if (path === "/playlists" || path.startsWith("/playlist/"))
         return "playlists";
       if (path.includes("favourite")) return "favourites";
+      if (path === "/downloads") return "downloads";
       return "home";
     }, [activeSection, location.pathname]);
 
@@ -37,6 +46,7 @@ const Sidebar: React.FC<SidebarProps> = React.memo(
 
       // Navigate to the appropriate page
       if (sectionId === "home") navigate("/home");
+      if (sectionId === "search") navigate("/search");
       if (sectionId === "library") navigate("/library");
       if (sectionId === "artists") navigate("/artists");
       if (sectionId === "albums") navigate("/albums");
@@ -44,15 +54,18 @@ const Sidebar: React.FC<SidebarProps> = React.memo(
       if (sectionId === "favourites") {
         navigate("/favourites");
       }
+      if (sectionId === "downloads") navigate("/downloads");
     };
 
     const navigationItems = useMemo(
       () => [
         { id: "home", icon: Home, label: "Home" },
+        { id: "search", icon: Search, label: "Search" },
         { id: "artists", icon: Users, label: "Artists" },
         { id: "albums", icon: Disc3, label: "Albums" },
         { id: "playlists", icon: ListMusic, label: "Playlists" },
         { id: "favourites", icon: Star, label: "Favourite Albums" },
+        { id: "downloads", icon: Download, label: "Downloads" },
       ],
       []
     );

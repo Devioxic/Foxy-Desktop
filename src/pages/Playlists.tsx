@@ -18,6 +18,7 @@ import {
   ChevronRight,
   Plus,
   Heart,
+  Download,
 } from "lucide-react";
 import { getAllPlaylists, createPlaylist } from "@/lib/jellyfin";
 import { hybridData } from "@/lib/sync";
@@ -199,6 +200,28 @@ const Playlists = () => {
     </div>
   );
 
+  // Downloaded Songs pseudo playlist card
+  const DownloadedSongsCard = () => (
+    <div
+      className="group cursor-pointer w-48"
+      onClick={() => navigate("/downloads/songs")}
+    >
+      <Card className="aspect-square hover:shadow-lg transition-shadow">
+        <CardContent className="p-0 h-full">
+          <div className="aspect-square bg-gradient-to-br from-pink-200 to-rose-200 flex items-center justify-center">
+            <Download className="w-12 h-12 text-pink-600 group-hover:scale-110 transition-transform" />
+          </div>
+        </CardContent>
+      </Card>
+      <div className="mt-2 text-center">
+        <p className="text-sm font-medium text-gray-900 group-hover:text-pink-600">
+          Downloaded Songs
+        </p>
+        <p className="text-xs text-gray-500">Tracks saved offline</p>
+      </div>
+    </div>
+  );
+
   if (loading) {
     return (
       <div className="min-h-screen bg-gray-50">
@@ -262,6 +285,7 @@ const Playlists = () => {
                   <>
                     <NewPlaylistCard />
                     <FavouritesPlaylistCard />
+                    <DownloadedSongsCard />
                   </>
                 )}
 

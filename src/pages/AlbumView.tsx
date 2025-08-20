@@ -46,8 +46,17 @@ import {
   Info,
 } from "lucide-react";
 import {
-  getAlbumItems,
-  getAlbumInfo,
+  isCollectionDownloaded,
+  downloadAlbumById,
+  removeAlbumDownloads,
+} from "@/lib/downloads";
+import {
+  showLoading,
+  dismissToast,
+  showSuccess,
+  showError,
+} from "@/utils/toast";
+import {
   findArtistByName,
   getCurrentUser,
   getServerInfo,
@@ -55,6 +64,7 @@ import {
   removeFromFavorites,
   checkIsFavorite,
 } from "@/lib/jellyfin";
+import { hybridData } from "@/lib/sync";
 import IconDropdown from "@/components/IconDropdown";
 import BackButton from "@/components/BackButton";
 import { logger } from "@/lib/logger";
@@ -145,6 +155,8 @@ const AlbumView = () => {
   const [authData] = useState(() =>
     JSON.parse(localStorage.getItem("authData") || "{}")
   );
+  const [isDownloaded, setIsDownloaded] = useState(false);
+  const [downloading, setDownloading] = useState(false);
 
   const handleLyricsToggle = (show: boolean) => {
     setShowLyrics(show);
@@ -210,7 +222,10 @@ const AlbumView = () => {
 
   useEffect(() => {
     if (albumId) {
-      loadAlbumData();
+  loadAlbumData();
+  const onDl = () => loadAlbumData();
+  window.addEventListener("downloadsUpdate", onDl);
+  return () => window.removeEventListener("downloadsUpdate", onDl);
     }
   }, [albumId]);
 
@@ -236,18 +251,27 @@ const AlbumView = () => {
   const loadAlbumData = async () => {
     perf.start("AlbumView.load");
     try {
-      if (!authData.accessToken || !authData.serverAddress || !albumId) {
-        navigate("/login");
-        return;
-      }
-
+      if (!albumId) return;
+      // Prefer local data when available; hybridData also falls back locally if server fails
       const [albumDetails, albumTracks] = await Promise.all([
-        getAlbumInfo(authData.serverAddress, authData.accessToken, albumId),
-        getAlbumItems(authData.serverAddress, authData.accessToken, albumId),
+        hybridData.getAlbumById(albumId),
+        hybridData.getAlbumTracks(albumId),
       ]);
 
-      setAlbumInfo(albumDetails);
-      setTracks(albumTracks.Items || []);
+      if (!albumDetails && (!authData.accessToken || !authData.serverAddress)) {
+        // If offline and no local album present, bail gracefully
+        setAlbumInfo(null);
+        setTracks([]);
+      } else {
+        setAlbumInfo(albumDetails as any);
+        setTracks((albumTracks as any) || []);
+      }
+      if (albumId) {
+        try {
+          const dl = await isCollectionDownloaded(albumId);
+          setIsDownloaded(dl);
+        } catch {}
+      }
 
       // Check favorite status for album
       if (albumDetails.Id) {
@@ -260,8 +284,8 @@ const AlbumView = () => {
       }
 
       // Check favorite status for all tracks
-      if (albumTracks.Items && albumTracks.Items.length > 0) {
-        const trackFavoritePromises = albumTracks.Items.map(async (track) => {
+      if (Array.isArray(albumTracks) && albumTracks.length > 0) {
+        const trackFavoritePromises = (albumTracks as any[]).map(async (track: any) => {
           if (track.Id) {
             try {
               const isFavorite = await checkIsFavorite(
@@ -281,7 +305,7 @@ const AlbumView = () => {
           return null;
         });
 
-        const trackFavoriteResults = await Promise.all(trackFavoritePromises);
+        const trackFavoriteResults: Array<{ id: string; isFavorite: boolean } | null> = await Promise.all(trackFavoritePromises);
         const trackFavoriteMap: Record<string, boolean> = {};
 
         trackFavoriteResults.forEach((result) => {
@@ -297,6 +321,33 @@ const AlbumView = () => {
     } finally {
       perf.end("AlbumView.load");
       setLoading(false);
+    }
+  };
+
+  const handleToggleDownload = async () => {
+    if (!albumInfo?.Id) return;
+    if (downloading) return;
+    setDownloading(true);
+    const id = showLoading(
+      isDownloaded ? "Removing downloads..." : "Downloading album..."
+    );
+    try {
+      if (isDownloaded) {
+        await removeAlbumDownloads(albumInfo.Id);
+        setIsDownloaded(false);
+        showSuccess("Removed album downloads");
+      } else {
+        const res = await downloadAlbumById(albumInfo.Id, albumInfo.Name);
+        setIsDownloaded(true);
+        showSuccess(
+          `Downloaded ${res.downloaded} tracks${res.failed ? `, ${res.failed} failed` : ""}`
+        );
+      }
+    } catch (e: any) {
+      showError(e?.message || "Download failed");
+    } finally {
+      dismissToast(id as any);
+      setDownloading(false);
     }
   };
 
@@ -497,6 +548,53 @@ const AlbumView = () => {
                     <Shuffle className="w-5 h-5 mr-2" />
                     Shuffle
                   </Button>
+
+                  {/* Favourite (small icon button) */}
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={toggleAlbumFavorite}
+                    disabled={favoriteLoading[albumInfo.Id || ""]}
+                    className="p-1 text-gray-600 hover:text-pink-600 hover:bg-gray-100"
+                    title={
+                      isAlbumFavorite
+                        ? "Remove from favourites"
+                        : "Add to favourites"
+                    }
+                  >
+                    {favoriteLoading[albumInfo.Id || ""] ? (
+                      <Loader2 className="w-4 h-4 animate-spin text-gray-400" />
+                    ) : (
+                      <Star
+                        className={`w-4 h-4 transition-colors ${
+                          isAlbumFavorite
+                            ? "text-pink-600 fill-pink-600"
+                            : "text-gray-600"
+                        }`}
+                      />
+                    )}
+                  </Button>
+
+                  {/* Download (small icon button) */}
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={handleToggleDownload}
+                    disabled={downloading}
+                    className="p-1 text-gray-600 hover:text-pink-600 hover:bg-gray-100"
+                    title={isDownloaded ? "Remove download" : "Download"}
+                  >
+                    {downloading ? (
+                      <Loader2 className="w-4 h-4 animate-spin text-gray-400" />
+                    ) : (
+                      <Download
+                        className={`w-4 h-4 ${
+                          isDownloaded ? "text-pink-600" : "text-gray-600"
+                        }`}
+                      />
+                    )}
+                  </Button>
+
                   <IconDropdown
                     align="start"
                     tooltip="More actions"

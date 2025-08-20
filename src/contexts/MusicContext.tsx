@@ -12,6 +12,7 @@ import {
   reportPlaybackStopped,
   getAudioStreamInfo,
 } from "@/lib/jellyfin";
+import { getLocalUrlForTrack } from "@/lib/downloads";
 
 export interface Track {
   Id: string;
@@ -569,6 +570,15 @@ export const MusicProvider: React.FC<MusicProviderProps> = ({ children }) => {
     return `${serverAddress}/Audio/${track.Id}/universal?${params.join("&")}`;
   };
 
+  // Resolve a playable URL, preferring a local downloaded file when available
+  const resolveTrackUrl = async (track: Track): Promise<string> => {
+    try {
+      const local = await getLocalUrlForTrack(track.Id);
+      if (local) return local;
+    } catch {}
+    return getStreamUrl(track);
+  };
+
   const play = async (track?: Track) => {
     try {
       let targetTrack: Track | null = null;
@@ -596,7 +606,7 @@ export const MusicProvider: React.FC<MusicProviderProps> = ({ children }) => {
         // toggle pause? handled elsewhere
       }
 
-      const streamUrl = getStreamUrl(targetTrack);
+      const streamUrl = await resolveTrackUrl(targetTrack);
       if (!streamUrl) return;
       // Choose target element (if currently A, load into B, and vice versa) for overlap
       const useA = useARef.current;
@@ -861,34 +871,40 @@ export const MusicProvider: React.FC<MusicProviderProps> = ({ children }) => {
     try {
       localStorage.setItem("playback_quality", q);
     } catch {}
-    // If a track is currently playing, restart it with new quality
-    if (currentTrack && isPlaying) {
-      const el = useARef.current ? audioA : audioB;
-      const pos = el.currentTime;
-      const wasPlaying = isPlaying;
-      const track = currentTrack;
-      // Re-compute URL using new quality
-      const newUrl = getStreamUrl(track);
-      el.src = newUrl;
-      setCurrentSrc(newUrl);
-      el.currentTime = pos; // keep position best-effort
-      // Reset gain to current volume
-      try {
-        const g = useARef.current ? gainARef.current : gainBRef.current;
-        const ctx = audioCtxRef.current;
-        if (g && ctx) {
-          const now = ctx.currentTime;
-          g.gain.cancelScheduledValues(now);
-          g.gain.setValueAtTime(volume, now);
-        }
-      } catch {}
-      if (wasPlaying) {
+    // If a track is currently playing, restart it with new quality (unless local file is downloaded)
+    (async () => {
+      if (currentTrack && isPlaying) {
+        const el = useARef.current ? audioA : audioB;
+        const pos = el.currentTime;
+        const wasPlaying = isPlaying;
+        const track = currentTrack;
+        // Re-compute URL using new quality, but prefer local downloaded file
+        const newUrl = await (async () => {
+          const local = await getLocalUrlForTrack(track.Id);
+          if (local) return local;
+          return getStreamUrl(track);
+        })();
+        el.src = newUrl;
+        setCurrentSrc(newUrl);
+        el.currentTime = pos; // keep position best-effort
+        // Reset gain to current volume
         try {
-          audioCtxRef.current?.resume();
+          const g = useARef.current ? gainARef.current : gainBRef.current;
+          const ctx = audioCtxRef.current;
+          if (g && ctx) {
+            const now = ctx.currentTime;
+            g.gain.cancelScheduledValues(now);
+            g.gain.setValueAtTime(volume, now);
+          }
         } catch {}
-        el.play().catch(() => {});
+        if (wasPlaying) {
+          try {
+            audioCtxRef.current?.resume();
+          } catch {}
+          el.play().catch(() => {});
+        }
       }
-    }
+    })();
   };
 
   const addToQueue = (track: Track) => {
@@ -943,8 +959,9 @@ export const MusicProvider: React.FC<MusicProviderProps> = ({ children }) => {
     setCurrentIndex(clamped);
     const first = tracks[clamped];
     if (first) {
-      const streamUrl = getStreamUrl(first);
-      if (streamUrl) {
+      (async () => {
+        const streamUrl = await resolveTrackUrl(first);
+        if (!streamUrl) return;
         audio.src = streamUrl;
         setCurrentSrc(streamUrl);
         setCurrentTrack(first);
@@ -966,11 +983,14 @@ export const MusicProvider: React.FC<MusicProviderProps> = ({ children }) => {
             }
           }
         } catch {}
-        audio.play().then(() => {
-          setIsPlaying(true);
-          reportPlaybackStart(serverAddress, accessToken, first.Id, 0);
-        });
-      }
+        audio
+          .play()
+          .then(() => {
+            setIsPlaying(true);
+            reportPlaybackStart(serverAddress, accessToken, first.Id, 0);
+          })
+          .catch(() => {});
+      })();
     }
   };
 

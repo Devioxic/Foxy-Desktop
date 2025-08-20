@@ -35,6 +35,17 @@ import {
   X,
 } from "lucide-react";
 import {
+  isCollectionDownloaded,
+  downloadPlaylistById,
+  removePlaylistDownloads,
+} from "@/lib/downloads";
+import {
+  showLoading,
+  dismissToast,
+  showSuccess,
+  showError,
+} from "@/utils/toast";
+import {
   getPlaylistItems,
   getPlaylistInfo,
   findArtistByName,
@@ -85,6 +96,8 @@ const PlaylistView = () => {
     Record<string, boolean>
   >({});
   const [showLyrics, setShowLyrics] = useState(false);
+  const [isDownloaded, setIsDownloaded] = useState(false);
+  const [downloading, setDownloading] = useState(false);
 
   const handleLyricsToggle = (show: boolean) => {
     setShowLyrics(show);
@@ -119,6 +132,12 @@ const PlaylistView = () => {
 
       setPlaylistInfo(info);
       setTracks(items as Track[]);
+      if (playlistId) {
+        try {
+          const dl = await isCollectionDownloaded(playlistId);
+          setIsDownloaded(dl);
+        } catch {}
+      }
 
       // Check if playlist is favorited
       try {
@@ -168,6 +187,33 @@ const PlaylistView = () => {
       logger.error("Failed to load playlist data", error);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleToggleDownload = async () => {
+    if (!playlistId) return;
+    if (downloading) return;
+    setDownloading(true);
+    const id = showLoading(
+      isDownloaded ? "Removing downloads..." : "Downloading playlist..."
+    );
+    try {
+      if (isDownloaded) {
+        await removePlaylistDownloads(playlistId);
+        setIsDownloaded(false);
+        showSuccess("Removed playlist downloads");
+      } else {
+        const res = await downloadPlaylistById(playlistId, playlistInfo?.Name);
+        setIsDownloaded(true);
+        showSuccess(
+          `Downloaded ${res.downloaded} tracks${res.failed ? `, ${res.failed} failed` : ""}`
+        );
+      }
+    } catch (e: any) {
+      showError(e?.message || "Download failed");
+    } finally {
+      dismissToast(id as any);
+      setDownloading(false);
     }
   };
 
@@ -419,6 +465,13 @@ const PlaylistView = () => {
               >
                 <Shuffle className="w-4 h-4 mr-2" />
                 Shuffle
+              </Button>
+              <Button
+                variant={isDownloaded ? "secondary" : "outline"}
+                onClick={handleToggleDownload}
+                disabled={downloading}
+              >
+                {isDownloaded ? "Remove Download" : "Download"}
               </Button>
               <IconDropdown
                 align="start"

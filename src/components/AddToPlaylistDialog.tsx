@@ -11,6 +11,7 @@ import {
 import { Skeleton } from "@/components/ui/skeleton";
 import { Card, CardContent } from "@/components/ui/card";
 import { addTrackToPlaylist, getPlaylistInfo } from "@/lib/jellyfin";
+import { isCollectionDownloaded, downloadTrack } from "@/lib/downloads";
 import { localDb } from "@/lib/database";
 import { hybridData } from "@/lib/sync";
 import { logger } from "@/lib/logger";
@@ -106,6 +107,15 @@ export default function AddToPlaylistDialog({
           )
         );
       }
+
+      // If playlist is marked as downloaded, auto-download this track
+      try {
+        if (await isCollectionDownloaded(playlistId)) {
+          const auth = JSON.parse(localStorage.getItem("authData") || "{}");
+          const url = `${auth.serverAddress}/Audio/${trackId}/stream?static=true&api_key=${auth.accessToken}`;
+          await downloadTrack({ trackId, name: trackName, url });
+        }
+      } catch {}
 
       // Notify other views to refresh (Playlists page listens for this)
       try {

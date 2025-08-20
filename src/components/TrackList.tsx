@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -17,8 +17,14 @@ import {
   ListPlus,
   Loader2,
   FileText,
+  Download,
 } from "lucide-react";
 import { findArtistByName } from "@/lib/jellyfin";
+import {
+  downloadTrack,
+  removeDownload,
+  getLocalUrlForTrack,
+} from "@/lib/downloads";
 import { useNavigate } from "react-router-dom";
 
 // Reusable track list renderer for albums, artists and playlists
@@ -84,6 +90,10 @@ const TrackList: React.FC<TrackListProps> = React.memo(
       id: string;
       name: string;
     } | null>(null);
+    const [downloadedMap, setDownloadedMap] = useState<Record<string, boolean>>(
+      {}
+    );
+    const [dlLoading, setDlLoading] = useState<Record<string, boolean>>({});
 
     const isCurrentTrack = (trackId?: string) =>
       trackId && currentTrack?.Id === trackId;
@@ -112,6 +122,34 @@ const TrackList: React.FC<TrackListProps> = React.memo(
         ? tracks.slice(0, maxInitialTracks)
         : tracks;
     }, [tracks, showMoreButton, showAll, maxInitialTracks]);
+
+    // Probe which tracks are downloaded
+    useEffect(() => {
+      let cancelled = false;
+      (async () => {
+        try {
+          const pairs = await Promise.all(
+            tracks.map(async (t) => {
+              if (!t.Id) return null;
+              try {
+                const url = await getLocalUrlForTrack(t.Id);
+                return [t.Id, !!url] as const;
+              } catch {
+                return [t.Id, false] as const;
+              }
+            })
+          );
+          const map: Record<string, boolean> = {};
+          for (const p of pairs) {
+            if (p && p[0]) map[p[0]] = p[1];
+          }
+          if (!cancelled) setDownloadedMap(map);
+        } catch {}
+      })();
+      return () => {
+        cancelled = true;
+      };
+    }, [tracks]);
 
     return (
       <>
@@ -186,6 +224,116 @@ const TrackList: React.FC<TrackListProps> = React.memo(
                 </p>
               </div>
 
+              {/* Inline actions: favourite + download (left of duration) */}
+              <div className="w-16 flex items-center justify-end gap-1 pr-1">
+                {onToggleTrackFavorite && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="p-1 h-6 w-6 text-gray-500 hover:text-pink-600 hover:bg-gray-100"
+                    title={
+                      trackFavorites[track.Id || ""]
+                        ? "Remove from favourites"
+                        : "Add to favourites"
+                    }
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      if (track.Id) onToggleTrackFavorite(track.Id);
+                    }}
+                    disabled={!!favoriteLoading[track.Id || ""]}
+                  >
+                    {favoriteLoading[track.Id || ""] ? (
+                      <Loader2 className="w-3.5 h-3.5 animate-spin text-gray-400" />
+                    ) : (
+                      <Star
+                        className={`w-3.5 h-3.5 ${
+                          trackFavorites[track.Id || ""]
+                            ? "text-pink-600 fill-pink-600"
+                            : "text-gray-500"
+                        }`}
+                      />
+                    )}
+                  </Button>
+                )}
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="p-1 h-6 w-6 text-gray-500 hover:text-pink-600 hover:bg-gray-100"
+                  title={
+                    downloadedMap[track.Id || ""]
+                      ? "Remove download"
+                      : "Download"
+                  }
+                  onClick={async (e) => {
+                    e.stopPropagation();
+                    if (!track.Id) return;
+                    setDlLoading((m) => ({ ...m, [track.Id!]: true }));
+                    try {
+                      const has =
+                        downloadedMap[track.Id] ||
+                        !!(await getLocalUrlForTrack(track.Id));
+                      if (has) {
+                        await removeDownload(track.Id);
+                        setDownloadedMap((m) => ({ ...m, [track.Id!]: false }));
+                      } else {
+                        const ms = (track as any).MediaSources?.[0];
+                        let url: string | undefined =
+                          ms?.DirectStreamUrl || ms?.TranscodingUrl;
+                        // Ensure absolute URL with api_key
+                        try {
+                          const auth = JSON.parse(
+                            localStorage.getItem("authData") || "{}"
+                          );
+                          const server = auth?.serverAddress;
+                          const token = auth?.accessToken;
+                          if (!url) {
+                            if (server && token) {
+                              url = `${server}/Audio/${track.Id}/stream?static=true&api_key=${token}`;
+                            }
+                          } else if (
+                            url &&
+                            server &&
+                            token &&
+                            url.startsWith("/")
+                          ) {
+                            url = `${server}${url}${url.includes("?") ? `&api_key=${token}` : `?api_key=${token}`}`;
+                          }
+                        } catch {}
+                        if (!url) return;
+                        await downloadTrack({
+                          trackId: track.Id,
+                          name: track.Name,
+                          url,
+                          container: ms?.Container,
+                          bitrate: ms?.Bitrate,
+                        });
+                        setDownloadedMap((m) => ({ ...m, [track.Id!]: true }));
+                      }
+                    } finally {
+                      setDlLoading((m) => ({ ...m, [track.Id!]: false }));
+                      // Notify others UI might want to refresh
+                      try {
+                        window.dispatchEvent(
+                          new CustomEvent("downloadsUpdate")
+                        );
+                      } catch {}
+                    }
+                  }}
+                >
+                  {dlLoading[track.Id || ""] ? (
+                    <Loader2 className="w-3.5 h-3.5 animate-spin text-gray-400" />
+                  ) : (
+                    <Download
+                      className={`w-3.5 h-3.5 ${
+                        downloadedMap[track.Id || ""]
+                          ? "text-pink-600"
+                          : "text-gray-500"
+                      }`}
+                    />
+                  )}
+                </Button>
+              </div>
+
               {/* Duration */}
               <div className="w-14 text-right">
                 <span className="text-xs text-gray-500">
@@ -211,6 +359,54 @@ const TrackList: React.FC<TrackListProps> = React.memo(
                     className="w-48"
                     sideOffset={5}
                   >
+                    {/* Download/Remove Download */}
+                    <DropdownMenuItem
+                      onSelect={(e) => e.preventDefault()}
+                      onClick={async (e) => {
+                        e.stopPropagation();
+                        if (!track.Id) return;
+                        const has =
+                          downloadedMap[track.Id || ""] ||
+                          !!(await getLocalUrlForTrack(track.Id));
+                        if (has) {
+                          await removeDownload(track.Id);
+                          setDownloadedMap((m) => ({
+                            ...m,
+                            [track.Id!]: false,
+                          }));
+                        } else {
+                          const ms = (track as any).MediaSources?.[0];
+                          // Prefer explicit URLs from MediaSources; otherwise build a direct static stream URL
+                          let url =
+                            ms?.DirectStreamUrl || ms?.TranscodingUrl || "";
+                          if (!url) {
+                            try {
+                              const auth = JSON.parse(
+                                localStorage.getItem("authData") || "{}"
+                              );
+                              if (auth.serverAddress && auth.accessToken) {
+                                url = `${auth.serverAddress}/Audio/${track.Id}/stream?static=true&api_key=${auth.accessToken}`;
+                              }
+                            } catch {}
+                          }
+                          if (!url) return;
+                          await downloadTrack({
+                            trackId: track.Id,
+                            name: track.Name,
+                            url,
+                            container: ms?.Container,
+                            bitrate: ms?.Bitrate,
+                          });
+                        }
+                      }}
+                      className="cursor-pointer"
+                    >
+                      <span className="text-xs">
+                        {downloadedMap[track.Id || ""]
+                          ? "Remove Download"
+                          : "Download"}
+                      </span>
+                    </DropdownMenuItem>
                     <DropdownMenuItem
                       onSelect={(e) => {
                         e.preventDefault();

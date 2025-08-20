@@ -17,9 +17,15 @@ interface PlaylistCardProps {
   authData: {
     serverAddress?: string;
   };
+  // Optional query string to append when navigating (e.g., "q=term")
+  appendQuery?: string;
 }
 
-const PlaylistCard: React.FC<PlaylistCardProps> = ({ item, authData }) => {
+const PlaylistCard: React.FC<PlaylistCardProps> = ({
+  item,
+  authData,
+  appendQuery,
+}) => {
   const navigate = useNavigate();
 
   const getPlaylistArt = (size: number = 400) => {
@@ -39,7 +45,8 @@ const PlaylistCard: React.FC<PlaylistCardProps> = ({ item, authData }) => {
 
   const handleCardClick = () => {
     if (item.Id) {
-      navigate(`/playlist/${item.Id}`);
+      const suffix = appendQuery ? `?${appendQuery}` : "";
+      navigate(`/playlist/${item.Id}${suffix}`);
     }
   };
 

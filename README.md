@@ -24,10 +24,11 @@ Foxy Desktop is a modern music player for your Jellyfin library, designed to pro
 Download the latest release for your platform from the [releases page](https://github.com/Devioxic/Foxy-Desktop/releases).
 
 ## Roadmap
+- [x] Add a full library search
+- [x] Add support for crossfade and more playback settings
 - [ ] Add support for more themes
-- [ ] Add a full library search
-- [ ] Add support for crossfade and more playback settings
 - [ ] Offline playback support
+- [ ] Discord Rich Presence integration
 
 ## Bugs? Suggestions?
 If you find any bugs or have suggestions for new features, please open an [issue](https://github.com/Devioxic/Foxy-Desktop/issues).

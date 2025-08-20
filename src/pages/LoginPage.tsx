@@ -35,6 +35,14 @@ const LoginPage = () => {
         try {
           clearQueue();
         } catch {}
+
+        // Also clear cached sidebar/profile/sync state to avoid cross-server leakage
+        try {
+          localStorage.removeItem("userProfile.cache");
+          localStorage.removeItem("serverInfo.cache");
+          localStorage.removeItem("syncStatus.cache");
+          localStorage.removeItem("syncStatus.last");
+        } catch {}
       }
     } catch {}
   };
