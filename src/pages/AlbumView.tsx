@@ -1,9 +1,21 @@
+import { Dropdown } from "@/components/Dropdown";
+import {
+  Play,
+  Star,
+  Music,
+  Shuffle,
+  Plus,
+  Loader2,
+  User2,
+  Download,
+  ListPlus,
+  MoreVertical,
+  ChevronsRight,
+} from "lucide-react";
 import React, { useState, useEffect } from "react";
 import { useParams, useNavigate, useSearchParams } from "react-router-dom";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Skeleton } from "@/components/ui/skeleton";
 import LoadingSkeleton from "@/components/LoadingSkeleton";
 import {
   Dialog,
@@ -12,32 +24,16 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-  DialogTrigger,
 } from "@/components/ui/dialog";
 // Dropdown primitives removed
-import AddToPlaylistDialog from "@/components/AddToPlaylistDialog";
+// AddToPlaylistDialog not used here; album-level add handled via Dialog below
 import MusicPlayer from "@/components/MusicPlayer";
 import Sidebar from "@/components/Sidebar";
 import TrackList from "@/components/TrackList";
 import { useMusicPlayer } from "@/contexts/MusicContext";
 import { formatDuration, getImageUrl } from "@/utils/media";
 import { perf } from "@/utils/performance";
-import {
-  Play,
-  Pause,
-  Star,
-  Clock,
-  ArrowLeft,
-  Music,
-  Shuffle,
-  Plus,
-  Loader2,
-  User2,
-  Share,
-  Download,
-  ListPlus,
-  Info,
-} from "lucide-react";
+// lucide icons imported above
 import {
   isCollectionDownloaded,
   downloadAlbumById,
@@ -56,6 +52,8 @@ import {
   addToFavorites,
   removeFromFavorites,
   checkIsFavorite,
+  getAllPlaylists,
+  addItemsToPlaylist,
 } from "@/lib/jellyfin";
 import { hybridData } from "@/lib/sync";
 // Removed IconDropdown usage
@@ -126,8 +124,14 @@ const AlbumView = () => {
       );
     }
   };
-  const { playQueue, addToQueue, currentTrack, isPlaying, queue } =
-    useMusicPlayer();
+  const {
+    playQueue,
+    addToQueue,
+    addToQueueNext,
+    currentTrack,
+    isPlaying,
+    queue,
+  } = useMusicPlayer();
 
   const [albumInfo, setAlbumInfo] = useState<AlbumInfo | null>(null);
   const [tracks, setTracks] = useState<AlbumTrack[]>([]);
@@ -150,6 +154,10 @@ const AlbumView = () => {
   );
   const [isDownloaded, setIsDownloaded] = useState(false);
   const [downloading, setDownloading] = useState(false);
+  const [dropdownOpen, setDropdownOpen] = useState(false);
+  const [addAlbumDialogOpen, setAddAlbumDialogOpen] = useState(false);
+  const [allPlaylists, setAllPlaylists] = useState<any[]>([]);
+  const [addingTo, setAddingTo] = useState<string | null>(null);
 
   const handleLyricsToggle = (show: boolean) => {
     setShowLyrics(show);
@@ -236,6 +244,14 @@ const AlbumView = () => {
 
   useEffect(() => {
     loadUserInfo();
+  }, []);
+  useEffect(() => {
+    (async () => {
+      try {
+        const lists = await getAllPlaylists();
+        setAllPlaylists(lists || []);
+      } catch {}
+    })();
   }, []);
 
   const loadUserInfo = async () => {
@@ -382,6 +398,29 @@ const AlbumView = () => {
     tracks.forEach((track) => {
       addToQueue(track as any);
     });
+  };
+  const handlePlayNextAll = () => {
+    if (tracks.length === 0) return;
+    if (!currentTrack) {
+      // nothing playing — start the album
+      return handlePlayAlbum();
+    }
+    // Insert next maintaining album order: last track should be added first
+    const toInsert = [...tracks].reverse();
+    toInsert.forEach((t) => addToQueueNext(t as any));
+  };
+  const handleAddAlbumToPlaylist = async (playlistId: string) => {
+    const ids = tracks.map((t) => t.Id!).filter(Boolean) as string[];
+    if (!ids.length) return;
+    setAddingTo(playlistId);
+    try {
+      await addItemsToPlaylist(playlistId, ids);
+      setAddAlbumDialogOpen(false);
+    } catch (e) {
+      logger.error("Failed to add album to playlist", e);
+    } finally {
+      setAddingTo(null);
+    }
   };
 
   const handlePlayTrack = (track: AlbumTrack, index: number) => {
@@ -597,57 +636,74 @@ const AlbumView = () => {
                     )}
                   </Button>
 
-                  {/* Inline buttons replacing dropdown */}
+                  {/* Inline buttons + dropdown */}
                   <div className="flex items-center gap-2">
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      disabled={tracks.length === 0}
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        if (tracks.length === 0) return;
-                        if (queue.length === 0) {
-                          playQueue(tracks as any, 0);
-                        } else {
-                          tracks.forEach((track) => addToQueue(track as any));
-                        }
-                      }}
-                    >
-                      <Plus className="w-3 h-3 mr-2" /> Add all to queue
-                    </Button>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      disabled={tracks.length === 0}
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        // Placeholder for future Add Album to Playlist feature
-                      }}
-                    >
-                      <ListPlus className="w-3 h-3 mr-2" /> Add to playlist
-                    </Button>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      disabled={favoriteLoading[albumInfo.Id || ""]}
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        toggleAlbumFavorite();
-                      }}
-                    >
-                      {favoriteLoading[albumInfo.Id || ""] ? (
-                        <Loader2 className="w-3 h-3 mr-2 animate-spin text-gray-400" />
-                      ) : (
-                        <Star
-                          className={`w-3 h-3 mr-2 transition-colors ${
-                            isAlbumFavorite
-                              ? "text-pink-600 fill-pink-600"
-                              : "text-gray-400"
-                          }`}
-                        />
-                      )}
-                      {isAlbumFavorite ? "Unfavourite" : "Favourite"}
-                    </Button>
+                    <Dropdown
+                      open={dropdownOpen}
+                      onOpenChange={setDropdownOpen}
+                      trigger={
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="p-1 text-gray-600 hover:text-pink-600 hover:bg-gray-100"
+                          onClick={(e) => e.stopPropagation()}
+                          aria-label="Album options"
+                        >
+                          <MoreVertical className="w-4 h-4" />
+                        </Button>
+                      }
+                      actions={[
+                        {
+                          id: "fav",
+                          label: isAlbumFavorite ? "Unfavourite" : "Favourite",
+                          icon: (
+                            <Star
+                              className={`w-4 h-4 ${
+                                isAlbumFavorite
+                                  ? "text-pink-600 fill-pink-600"
+                                  : ""
+                              }`}
+                            />
+                          ),
+                          onSelect: toggleAlbumFavorite,
+                          disabled: !!favoriteLoading[albumInfo.Id || ""],
+                        },
+                        {
+                          id: "add-to-playlist",
+                          label: "Add to playlist",
+                          icon: <ListPlus className="w-4 h-4" />,
+                          onSelect: () => setAddAlbumDialogOpen(true),
+                          disabled: tracks.length === 0,
+                        },
+                        {
+                          id: "download",
+                          label: isDownloaded ? "Remove download" : "Download",
+                          icon: downloading ? (
+                            <Loader2 className="w-4 h-4 animate-spin" />
+                          ) : (
+                            <Download
+                              className={`w-4 h-4 ${isDownloaded ? "text-pink-600" : ""}`}
+                            />
+                          ),
+                          onSelect: handleToggleDownload,
+                          disabled: downloading,
+                        },
+                        {
+                          id: "add-all",
+                          label: "Add all to queue",
+                          icon: <Plus className="w-4 h-4" />,
+                          onSelect: handleAddAllToQueue,
+                          disabled: tracks.length === 0,
+                        },
+                        {
+                          id: "play-next",
+                          label: "Play next",
+                          icon: <ChevronsRight className="w-4 h-4" />,
+                          onSelect: handlePlayNextAll,
+                          disabled: tracks.length === 0,
+                        },
+                      ]}
+                    />
                   </div>
                 </div>
               </div>
@@ -682,6 +738,43 @@ const AlbumView = () => {
           </div>
         </div>
       </div>
+
+      <Dialog open={addAlbumDialogOpen} onOpenChange={setAddAlbumDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Add album to playlist</DialogTitle>
+            <DialogDescription>
+              Select a playlist to add all tracks.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="max-h-80 overflow-y-auto space-y-1">
+            {allPlaylists.map((pl: any) => (
+              <button
+                key={pl.Id}
+                className="w-full text-left px-3 py-2 rounded hover:bg-gray-100 flex items-center justify-between"
+                onClick={() => handleAddAlbumToPlaylist(pl.Id)}
+                disabled={addingTo === pl.Id}
+              >
+                <span className="truncate">{pl.Name}</span>
+                {addingTo === pl.Id && (
+                  <Loader2 className="w-4 h-4 animate-spin text-pink-600" />
+                )}
+              </button>
+            ))}
+            {allPlaylists.length === 0 && (
+              <div className="text-sm text-gray-500">No playlists found.</div>
+            )}
+          </div>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setAddAlbumDialogOpen(false)}
+            >
+              Cancel
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <MusicPlayer
         showLyrics={showLyrics}

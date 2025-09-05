@@ -1410,6 +1410,33 @@ export const addTrackToPlaylist = async (
 };
 
 // Add multiple tracks to an existing playlist
+export const addItemsToPlaylist = async (
+  playlistId: string,
+  trackIds: string[]
+) => {
+  try {
+    if (!Array.isArray(trackIds) || trackIds.length === 0) return;
+    const authData = JSON.parse(localStorage.getItem("authData") || "{}");
+    const api = jellyfin.createApi(
+      authData.serverAddress,
+      authData.accessToken
+    );
+    const playlistsApi = getPlaylistsApi(api);
+
+    const response = await playlistsApi.addItemToPlaylist({
+      playlistId,
+      ids: trackIds,
+      userId: authData.userId,
+    });
+
+    return response.data;
+  } catch (error) {
+    logger.error("Error adding items to playlist:", error);
+    throw error;
+  }
+};
+
+// Add multiple tracks to an existing playlist
 export const addTracksToPlaylist = async (
   playlistId: string,
   trackIds: string[]
