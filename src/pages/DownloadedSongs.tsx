@@ -1,10 +1,17 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useState, useRef } from "react";
 import Sidebar from "@/components/Sidebar";
 import MusicPlayer from "@/components/MusicPlayer";
 import { Button } from "@/components/ui/button";
 import { Play, Shuffle, Plus, Music as MusicIcon } from "lucide-react";
 import { localDb } from "@/lib/database";
 import { useMusicPlayer } from "@/contexts/MusicContext";
+import { useAuthData } from "@/hooks/useAuthData";
+import {
+  addToFavorites,
+  removeFromFavorites,
+  checkIsFavorite,
+} from "@/lib/jellyfin";
+import { logger } from "@/lib/logger";
 import TrackList from "@/components/TrackList";
 import BackButton from "@/components/BackButton";
 import { showError } from "@/utils/toast";
@@ -14,8 +21,16 @@ const DownloadedSongs: React.FC = () => {
   const [items, setItems] = useState<any[]>([]);
   const [tracks, setTracks] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
-  const { playQueue, addToQueue } = useMusicPlayer();
+  const { playQueue, addToQueue, currentTrack, isPlaying } = useMusicPlayer();
+  const { authData, isAuthenticated } = useAuthData();
+  const [trackFavorites, setTrackFavorites] = useState<Record<string, boolean>>(
+    {}
+  );
+  const [favoriteLoading, setFavoriteLoading] = useState<
+    Record<string, boolean>
+  >({});
 
+  const initialLoadRef = useRef(false);
   useEffect(() => {
     const load = async () => {
       try {
@@ -47,15 +62,70 @@ const DownloadedSongs: React.FC = () => {
           })
           .filter(Boolean);
         setTracks(enriched);
+
+        // Load favorite status if authenticated
+        if (isAuthenticated() && enriched.length > 0) {
+          try {
+            const favPairs = await Promise.all(
+              enriched.map(async (t: any) => {
+                if (!t.Id) return null;
+                try {
+                  const fav = await checkIsFavorite(
+                    authData.serverAddress,
+                    authData.accessToken,
+                    t.Id
+                  );
+                  return [t.Id, fav] as const;
+                } catch (err) {
+                  return [t.Id, false] as const;
+                }
+              })
+            );
+            const map: Record<string, boolean> = {};
+            for (const p of favPairs) if (p) map[p[0]] = p[1];
+            setTrackFavorites(map);
+          } catch (err) {
+            logger.warn("Failed loading favorite statuses for downloads", err);
+          }
+        }
       } finally {
         setLoading(false);
       }
     };
-    load();
+    if (!initialLoadRef.current) {
+      initialLoadRef.current = true;
+      load();
+    }
     const onUpdate = () => load();
     window.addEventListener("downloadsUpdate", onUpdate);
     return () => window.removeEventListener("downloadsUpdate", onUpdate);
-  }, []);
+  }, [authData.accessToken, authData.serverAddress, isAuthenticated]);
+
+  const toggleTrackFavorite = async (trackId: string) => {
+    if (!isAuthenticated()) return; // silently ignore offline
+    setFavoriteLoading((m) => ({ ...m, [trackId]: true }));
+    try {
+      const isFav = trackFavorites[trackId];
+      if (isFav) {
+        await removeFromFavorites(
+          authData.serverAddress,
+          authData.accessToken,
+          trackId
+        );
+      } else {
+        await addToFavorites(
+          authData.serverAddress,
+          authData.accessToken,
+          trackId
+        );
+      }
+      setTrackFavorites((m) => ({ ...m, [trackId]: !isFav }));
+    } catch (err) {
+      showError("Failed to toggle favourite");
+    } finally {
+      setFavoriteLoading((m) => ({ ...m, [trackId]: false }));
+    }
+  };
   const handlePlayAll = () => {
     if (tracks.length > 0) playQueue(tracks as any[], 0);
   };
@@ -138,20 +208,28 @@ const DownloadedSongs: React.FC = () => {
         {tracks.length === 0 ? (
           <p className="text-gray-600">No downloaded songs yet.</p>
         ) : (
-          <TrackList
-            tracks={tracks}
-            currentTrack={null}
-            isPlaying={false}
-            onTrackPlay={(index) => playQueue(tracks as any[], index)}
-            showNumbers
-            showArtistFromTrack
-            albumArtist={undefined}
-            trackFavorites={{}}
-            favoriteLoading={{}}
-            onToggleTrackFavorite={() => {}}
-            formatDuration={formatDuration}
-            usePlaylistIndex
-          />
+          <div className="bg-white rounded-xl shadow-sm border border-gray-200">
+            <div className="p-4">
+              <h3 className="text-base font-semibold text-gray-900 mb-3">
+                Tracks
+              </h3>
+              <TrackList
+                tracks={tracks}
+                currentTrack={currentTrack as any}
+                isPlaying={isPlaying}
+                onTrackPlay={(index) => playQueue(tracks as any[], index)}
+                showNumbers
+                showArtistFromTrack
+                albumArtist={undefined}
+                trackFavorites={trackFavorites}
+                favoriteLoading={favoriteLoading}
+                onToggleTrackFavorite={toggleTrackFavorite}
+                formatDuration={formatDuration}
+                usePlaylistIndex
+                assumeAllDownloaded
+              />
+            </div>
+          </div>
         )}
       </div>
       <MusicPlayer />

@@ -1,9 +1,17 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import AddToPlaylistDialog from "@/components/AddToPlaylistDialog";
 import { useMusicPlayer } from "@/contexts/MusicContext";
 import { Dropdown } from "@/components/Dropdown";
-import { Play, Star, Plus, ListPlus, Download, ChevronsRight, MoreVertical } from "lucide-react";
+import {
+  Play,
+  Star,
+  Plus,
+  ListPlus,
+  Download,
+  ChevronsRight,
+  MoreVertical,
+} from "lucide-react";
 import { findArtistByName } from "@/lib/jellyfin";
 import {
   downloadTrack,
@@ -45,6 +53,8 @@ interface TrackListProps {
   formatDuration: (ticks?: number) => string;
   // When true, render numbers based on list order (playlist position)
   usePlaylistIndex?: boolean;
+  // If true, treat every track as already downloaded (skip probe)
+  assumeAllDownloaded?: boolean;
 }
 
 const TrackList: React.FC<TrackListProps> = React.memo(
@@ -66,6 +76,7 @@ const TrackList: React.FC<TrackListProps> = React.memo(
     albumArtist,
     formatDuration,
     usePlaylistIndex = false,
+    assumeAllDownloaded = false,
   }) => {
     const navigate = useNavigate();
     const { queue, playNow, addToQueue, addToQueueNext } = useMusicPlayer();
@@ -74,6 +85,10 @@ const TrackList: React.FC<TrackListProps> = React.memo(
       id: string;
       name: string;
     } | null>(null);
+    // Keep track of which track's dropdown is open to keep trigger visible
+    const [openDropdownTrackId, setOpenDropdownTrackId] = useState<
+      string | null
+    >(null);
     const [downloadedMap, setDownloadedMap] = useState<Record<string, boolean>>(
       {}
     );
@@ -107,8 +122,21 @@ const TrackList: React.FC<TrackListProps> = React.memo(
         : tracks;
     }, [tracks, showMoreButton, showAll, maxInitialTracks]);
 
-    // Probe which tracks are downloaded
+    // Download state handling
+    const lastIdSignatureRef = useRef<string | null>(null);
     useEffect(() => {
+      const idSignature = tracks.map((t) => t.Id).join(",");
+      if (idSignature === lastIdSignatureRef.current) return;
+      lastIdSignatureRef.current = idSignature;
+      if (assumeAllDownloaded) {
+        // Mark all as downloaded synchronously to avoid flicker
+        const map: Record<string, boolean> = {};
+        tracks.forEach((t) => {
+          if (t.Id) map[t.Id] = true;
+        });
+        setDownloadedMap(map);
+        return; // Skip probe
+      }
       let cancelled = false;
       (async () => {
         try {
@@ -123,17 +151,18 @@ const TrackList: React.FC<TrackListProps> = React.memo(
               }
             })
           );
-          const map: Record<string, boolean> = {};
-          for (const p of pairs) {
-            if (p && p[0]) map[p[0]] = p[1];
-          }
-          if (!cancelled) setDownloadedMap(map);
+          if (cancelled) return;
+          setDownloadedMap((prev) => {
+            const next = { ...prev } as Record<string, boolean>;
+            for (const p of pairs) if (p && p[0]) next[p[0]] = p[1];
+            return next;
+          });
         } catch {}
       })();
       return () => {
         cancelled = true;
       };
-    }, [tracks]);
+    }, [tracks, assumeAllDownloaded]);
 
     return (
       <>
@@ -183,6 +212,12 @@ const TrackList: React.FC<TrackListProps> = React.memo(
                   {trackFavorites[track.Id || ""] && (
                     <Star className="w-3 h-3 text-pink-600 fill-pink-600 flex-shrink-0" />
                   )}
+                  {track.Id && downloadedMap[track.Id] && (
+                    <Download
+                      className="w-3 h-3 text-pink-600 flex-shrink-0"
+                      aria-label="Downloaded"
+                    />
+                  )}
                 </div>
                 <p className="text-xs text-gray-600 truncate">
                   <button
@@ -207,9 +242,6 @@ const TrackList: React.FC<TrackListProps> = React.memo(
                   </button>
                 </p>
               </div>
-
-              {/* Actions moved into dropdown */}
-
               {/* Duration */}
               <div className="w-10 text-right pr-1">
                 <span className="text-xs text-gray-500">
@@ -217,168 +249,196 @@ const TrackList: React.FC<TrackListProps> = React.memo(
                 </span>
               </div>
 
-              {/* Dropdown trigger (hidden until hover) */}
-              <div className="w-6 flex justify-end opacity-0 group-hover:opacity-100 transition-opacity">
-                <Dropdown
-                  trigger={
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className="h-6 w-6 p-0 text-gray-500 hover:text-pink-600 hover:bg-gray-100"
-                      onClick={(e) => e.stopPropagation()}
-                      aria-label="Track options"
-                    >
-                      <MoreVertical className="w-4 h-4" />
-                    </Button>
-                  }
-                  actions={(() => {
-                    const actions = [] as any[];
-                    // Favourite toggle
-                    if (onToggleTrackFavorite && track.Id) {
-                      actions.push({
-                        id: "fav",
-                        label: trackFavorites[track.Id]
-                          ? "Remove favourite"
-                          : "Add to favourites",
-                        icon: (
-                          <Star
-                            className={`w-4 h-4 ${
-                              trackFavorites[track.Id]
-                                ? "text-pink-600 fill-pink-600"
-                                : ""
-                            }`}
-                          />
-                        ),
-                        onSelect: () => onToggleTrackFavorite(track.Id!),
-                        disabled: !!favoriteLoading[track.Id],
+              {/* Inline Add to Playlist button + Dropdown trigger */}
+              <div
+                className="w-16 flex items-center justify-end gap-1"
+                onClick={(e) => e.stopPropagation()}
+                onMouseDown={(e) => e.stopPropagation()}
+              >
+                {track.Id && track.Name && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-6 w-6 p-0 text-gray-500 hover:text-pink-600 hover:bg-gray-100"
+                    aria-label="Add to playlist"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setSelectedTrackForPlaylist({
+                        id: track.Id!,
+                        name: track.Name!,
                       });
+                      setShowAddToPlaylist(true);
+                    }}
+                  >
+                    <Plus className="w-4 h-4" />
+                  </Button>
+                )}
+                <div
+                  className={`flex justify-end transition-opacity ${
+                    openDropdownTrackId === track.Id
+                      ? "opacity-100"
+                      : "opacity-0 group-hover:opacity-100"
+                  }`}
+                >
+                  <Dropdown
+                    trigger={
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-6 w-6 p-0 text-gray-500 hover:text-pink-600 hover:bg-gray-100"
+                        onClick={(e) => e.stopPropagation()}
+                        aria-label="Track options"
+                      >
+                        <MoreVertical className="w-4 h-4" />
+                      </Button>
                     }
-                    // Add to playlist
-                    if (track.Id && track.Name) {
-                      actions.push({
-                        id: "add-to-playlist",
-                        label: "Add to playlist",
-                        icon: <Plus className="w-4 h-4" />,
-                        onSelect: () => {
-                          setSelectedTrackForPlaylist({
-                            id: track.Id!,
-                            name: track.Name!,
-                          });
-                          setShowAddToPlaylist(true);
-                        },
-                      });
-                    }
-                    // Download / remove
-                    if (track.Id) {
-                      const isDownloaded = downloadedMap[track.Id];
-                      actions.push({
-                        id: "download",
-                        label: isDownloaded ? "Remove download" : "Download",
-                        icon: (
-                          <Download
-                            className={`w-4 h-4 ${
-                              isDownloaded ? "text-pink-600" : ""
-                            }`}
-                          />
-                        ),
-                        onSelect: async () => {
-                          if (!track.Id) return;
-                          setDlLoading((m) => ({ ...m, [track.Id!]: true }));
-                          try {
-                            const has =
-                              downloadedMap[track.Id] ||
-                              !!(await getLocalUrlForTrack(track.Id));
-                            if (has) {
-                              await removeDownload(track.Id);
-                              setDownloadedMap((m) => ({
+                    actions={(() => {
+                      const actions = [] as any[];
+                      // Favourite toggle
+                      if (onToggleTrackFavorite && track.Id) {
+                        actions.push({
+                          id: "fav",
+                          label: trackFavorites[track.Id]
+                            ? "Remove favourite"
+                            : "Add to favourites",
+                          icon: (
+                            <Star
+                              className={`w-4 h-4 ${
+                                trackFavorites[track.Id]
+                                  ? "text-pink-600 fill-pink-600"
+                                  : ""
+                              }`}
+                            />
+                          ),
+                          onSelect: () => onToggleTrackFavorite(track.Id!),
+                          disabled: !!favoriteLoading[track.Id],
+                        });
+                      }
+                      // Add to playlist
+                      if (track.Id && track.Name) {
+                        actions.push({
+                          id: "add-to-playlist",
+                          label: "Add to playlist",
+                          icon: <Plus className="w-4 h-4" />,
+                          onSelect: () => {
+                            setSelectedTrackForPlaylist({
+                              id: track.Id!,
+                              name: track.Name!,
+                            });
+                            setShowAddToPlaylist(true);
+                          },
+                        });
+                      }
+                      // Download / remove
+                      if (track.Id) {
+                        const isDownloaded = downloadedMap[track.Id];
+                        actions.push({
+                          id: "download",
+                          label: isDownloaded ? "Remove download" : "Download",
+                          icon: (
+                            <Download
+                              className={`w-4 h-4 ${
+                                isDownloaded ? "text-pink-600" : ""
+                              }`}
+                            />
+                          ),
+                          onSelect: async () => {
+                            if (!track.Id) return;
+                            setDlLoading((m) => ({ ...m, [track.Id!]: true }));
+                            try {
+                              const has =
+                                downloadedMap[track.Id] ||
+                                !!(await getLocalUrlForTrack(track.Id));
+                              if (has) {
+                                await removeDownload(track.Id);
+                                setDownloadedMap((m) => ({
+                                  ...m,
+                                  [track.Id!]: false,
+                                }));
+                              } else {
+                                const ms = (track as any).MediaSources?.[0];
+                                let url: string | undefined =
+                                  ms?.DirectStreamUrl || ms?.TranscodingUrl;
+                                try {
+                                  const auth = JSON.parse(
+                                    localStorage.getItem("authData") || "{}"
+                                  );
+                                  const server = auth?.serverAddress;
+                                  const token = auth?.accessToken;
+                                  if (!url) {
+                                    if (server && token) {
+                                      url = `${server}/Audio/${track.Id}/stream?static=true&api_key=${token}`;
+                                    }
+                                  } else if (
+                                    url &&
+                                    server &&
+                                    token &&
+                                    url.startsWith("/")
+                                  ) {
+                                    url = `${server}${url}${url.includes("?") ? `&api_key=${token}` : `?api_key=${token}`}`;
+                                  }
+                                } catch {}
+                                if (!url) return;
+                                await downloadTrack({
+                                  trackId: track.Id,
+                                  name: track.Name,
+                                  url,
+                                  container: ms?.Container,
+                                  bitrate: ms?.Bitrate,
+                                });
+                                setDownloadedMap((m) => ({
+                                  ...m,
+                                  [track.Id!]: true,
+                                }));
+                              }
+                            } finally {
+                              setDlLoading((m) => ({
                                 ...m,
                                 [track.Id!]: false,
                               }));
-                            } else {
-                              const ms = (track as any).MediaSources?.[0];
-                              let url: string | undefined =
-                                ms?.DirectStreamUrl || ms?.TranscodingUrl;
                               try {
-                                const auth = JSON.parse(
-                                  localStorage.getItem("authData") || "{}"
+                                window.dispatchEvent(
+                                  new CustomEvent("downloadsUpdate")
                                 );
-                                const server = auth?.serverAddress;
-                                const token = auth?.accessToken;
-                                if (!url) {
-                                  if (server && token) {
-                                    url = `${server}/Audio/${track.Id}/stream?static=true&api_key=${token}`;
-                                  }
-                                } else if (
-                                  url &&
-                                  server &&
-                                  token &&
-                                  url.startsWith("/")
-                                ) {
-                                  url = `${server}${url}${url.includes("?") ? `&api_key=${token}` : `?api_key=${token}`}`;
-                                }
                               } catch {}
-                              if (!url) return;
-                              await downloadTrack({
-                                trackId: track.Id,
-                                name: track.Name,
-                                url,
-                                container: ms?.Container,
-                                bitrate: ms?.Bitrate,
-                              });
-                              setDownloadedMap((m) => ({
-                                ...m,
-                                [track.Id!]: true,
-                              }));
                             }
-                          } finally {
-                            setDlLoading((m) => ({
-                              ...m,
-                              [track.Id!]: false,
-                            }));
-                            try {
-                              window.dispatchEvent(
-                                new CustomEvent("downloadsUpdate")
-                              );
-                            } catch {}
+                          },
+                          disabled: !!dlLoading[track.Id],
+                        });
+                      }
+                      // Add to queue
+                      actions.push({
+                        id: "queue",
+                        label: "Add to queue",
+                        icon: <ListPlus className="w-4 h-4" />,
+                        onSelect: () => {
+                          if (track.Id) {
+                            if (queue.length === 0) {
+                              playNow(convertToMusicTrack(track));
+                            } else {
+                              addToQueue(convertToMusicTrack(track));
+                            }
                           }
                         },
-                        disabled: !!dlLoading[track.Id],
                       });
-                    }
-                    // Add to queue
-                    actions.push({
-                      id: "queue",
-                      label: "Add to queue",
-                      icon: <ListPlus className="w-4 h-4" />,
-                      onSelect: () => {
-                        if (track.Id) {
-                          if (queue.length === 0) {
-                            playNow(convertToMusicTrack(track));
-                          } else {
-                            addToQueue(convertToMusicTrack(track));
+                      // Play next
+                      actions.push({
+                        id: "play-next",
+                        label: "Play next",
+                        icon: <ChevronsRight className="w-4 h-4" />,
+                        onSelect: () => {
+                          if (track.Id) {
+                            addToQueueNext(convertToMusicTrack(track));
                           }
-                        }
-                      },
-                    });
-                    // Play next
-                    actions.push({
-                      id: "play-next",
-                      label: "Play next",
-                      icon: <ChevronsRight className="w-4 h-4" />,
-                      onSelect: () => {
-                        if (track.Id) {
-                          addToQueueNext(convertToMusicTrack(track));
-                        }
-                      },
-                    });
-                    return actions;
-                  })()}
-                  onOpenChange={(o) => {
-                    if (!o) {
-                      // ensure no parent click
-                    }
-                  }}
-                />
+                        },
+                      });
+                      return actions;
+                    })()}
+                    onOpenChange={(open) => {
+                      setOpenDropdownTrackId(open ? track.Id || null : null);
+                    }}
+                  />
+                </div>
               </div>
             </div>
           ))}

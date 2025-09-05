@@ -87,7 +87,8 @@ export const Dropdown: React.FC<DropdownProps> = ({
               key={a.id || a.label || i}
               disabled={a.disabled}
               onSelect={(e) => {
-                e.preventDefault();
+                // Allow menu to close (no preventDefault) but stop propagation so parent row handlers don't fire
+                e.stopPropagation();
                 if (a.disabled) return;
                 a.onSelect?.();
               }}
