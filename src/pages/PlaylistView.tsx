@@ -4,10 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import LoadingSkeleton from "@/components/LoadingSkeleton";
-import {
-  DropdownMenuItem,
-  DropdownMenuSeparator,
-} from "@/components/ui/dropdown-menu";
+// Dropdown primitives removed
 import { logger } from "@/lib/logger";
 import AddToPlaylistDialog from "@/components/AddToPlaylistDialog";
 import MusicPlayer from "@/components/MusicPlayer";
@@ -55,7 +52,7 @@ import {
 } from "@/lib/jellyfin";
 import { BaseItemDto } from "@jellyfin/sdk/lib/generated-client/models";
 import { useAuthData } from "@/hooks/useAuthData";
-import IconDropdown from "@/components/IconDropdown";
+// Removed IconDropdown usage
 
 interface Track extends BaseItemDto {
   AlbumArtist?: string;
@@ -481,60 +478,55 @@ const PlaylistView = () => {
                   />
                 )}
               </Button>
-              <IconDropdown
-                align="start"
-                tooltip="More actions"
-                menuWidthClass="w-52"
-              >
-                <DropdownMenuItem
+              {/* Inline buttons replacing dropdown */}
+              <div className="flex items-center gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  disabled={tracks.length === 0}
                   onClick={(e) => {
                     e.stopPropagation();
                     if (tracks.length === 0) return;
                     handleAddAllToQueue();
                   }}
-                  disabled={tracks.length === 0}
-                  className="cursor-pointer"
                 >
-                  <Plus className="w-4 h-4 mr-2" />
-                  Add all to queue
-                </DropdownMenuItem>
-                <DropdownMenuSeparator />
-                <DropdownMenuItem
-                  onClick={async (e) => {
-                    e.stopPropagation();
-                    if (!playlistInfo?.Id) return;
-                    if (
-                      !confirm("Delete this playlist? This cannot be undone.")
-                    )
-                      return;
-                    try {
-                      await deletePlaylist(playlistInfo.Id);
-                      // Remove from local cache so Playlists page updates instantly
+                  <Plus className="w-3 h-3 mr-2" /> Add all to queue
+                </Button>
+                {playlistInfo?.Id && (
+                  <Button
+                    variant="destructive"
+                    size="sm"
+                    onClick={async (e) => {
+                      e.stopPropagation();
+                      if (!playlistInfo?.Id) return;
+                      if (
+                        !confirm("Delete this playlist? This cannot be undone.")
+                      )
+                        return;
                       try {
-                        const { localDb } = await import("@/lib/database");
-                        await localDb.initialize();
-                        await localDb.deletePlaylist(playlistInfo.Id);
-                        // Notify any listeners to refresh
-                        window.dispatchEvent(new CustomEvent("syncUpdate"));
-                      } catch (cacheErr) {
-                        logger.warn(
-                          "Failed updating local cache after delete",
-                          cacheErr
-                        );
+                        await deletePlaylist(playlistInfo.Id);
+                        try {
+                          const { localDb } = await import("@/lib/database");
+                          await localDb.initialize();
+                          await localDb.deletePlaylist(playlistInfo.Id);
+                          window.dispatchEvent(new CustomEvent("syncUpdate"));
+                        } catch (cacheErr) {
+                          logger.warn(
+                            "Failed updating local cache after delete",
+                            cacheErr
+                          );
+                        }
+                        navigate(-1);
+                      } catch (err) {
+                        logger.error("Failed to delete playlist", err);
+                        alert("Failed to delete playlist");
                       }
-                      // Navigate back to playlists
-                      navigate(-1);
-                    } catch (err) {
-                      logger.error("Failed to delete playlist", err);
-                      alert("Failed to delete playlist");
-                    }
-                  }}
-                  className="cursor-pointer text-red-600 focus:text-red-700"
-                >
-                  <X className="w-4 h-4 mr-2" />
-                  Delete playlist
-                </DropdownMenuItem>
-              </IconDropdown>
+                    }}
+                  >
+                    <X className="w-3 h-3 mr-2" /> Delete
+                  </Button>
+                )}
+              </div>
             </div>
           </div>
         </div>

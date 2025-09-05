@@ -1,19 +1,9 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
-import { DropdownMenuItem } from "@/components/ui/dropdown-menu";
-import IconDropdown from "@/components/IconDropdown";
 import AddToPlaylistDialog from "@/components/AddToPlaylistDialog";
-import LyricsComponent from "@/components/LyricsComponent";
 import { useMusicPlayer } from "@/contexts/MusicContext";
-import {
-  Play,
-  Star,
-  Plus,
-  ListPlus,
-  Loader2,
-  FileText,
-  Download,
-} from "lucide-react";
+import { Dropdown } from "@/components/Dropdown";
+import { Play, Star, Plus, ListPlus, Download, ChevronsRight, MoreVertical } from "lucide-react";
 import { findArtistByName } from "@/lib/jellyfin";
 import {
   downloadTrack,
@@ -78,9 +68,8 @@ const TrackList: React.FC<TrackListProps> = React.memo(
     usePlaylistIndex = false,
   }) => {
     const navigate = useNavigate();
-    const { queue, playNow, addToQueue } = useMusicPlayer();
+    const { queue, playNow, addToQueue, addToQueueNext } = useMusicPlayer();
     const [showAddToPlaylist, setShowAddToPlaylist] = useState(false);
-    const [showLyrics, setShowLyrics] = useState(false);
     const [selectedTrackForPlaylist, setSelectedTrackForPlaylist] = useState<{
       id: string;
       name: string;
@@ -219,194 +208,177 @@ const TrackList: React.FC<TrackListProps> = React.memo(
                 </p>
               </div>
 
-              {/* Inline actions: favourite + download (left of duration) */}
-              <div className="w-16 flex items-center justify-end gap-1 pr-1">
-                {onToggleTrackFavorite && (
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="p-1 h-6 w-6 text-gray-500 hover:text-pink-600 hover:bg-gray-100"
-                    title={
-                      trackFavorites[track.Id || ""]
-                        ? "Remove from favourites"
-                        : "Add to favourites"
-                    }
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      if (track.Id) onToggleTrackFavorite(track.Id);
-                    }}
-                    disabled={!!favoriteLoading[track.Id || ""]}
-                  >
-                    {favoriteLoading[track.Id || ""] ? (
-                      <Loader2 className="w-3.5 h-3.5 animate-spin text-gray-400" />
-                    ) : (
-                      <Star
-                        className={`w-3.5 h-3.5 ${
-                          trackFavorites[track.Id || ""]
-                            ? "text-pink-600 fill-pink-600"
-                            : "text-gray-500"
-                        }`}
-                      />
-                    )}
-                  </Button>
-                )}
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="p-1 h-6 w-6 text-gray-500 hover:text-pink-600 hover:bg-gray-100"
-                  title={
-                    downloadedMap[track.Id || ""]
-                      ? "Remove download"
-                      : "Download"
-                  }
-                  onClick={async (e) => {
-                    e.stopPropagation();
-                    if (!track.Id) return;
-                    setDlLoading((m) => ({ ...m, [track.Id!]: true }));
-                    try {
-                      const has =
-                        downloadedMap[track.Id] ||
-                        !!(await getLocalUrlForTrack(track.Id));
-                      if (has) {
-                        await removeDownload(track.Id);
-                        setDownloadedMap((m) => ({ ...m, [track.Id!]: false }));
-                      } else {
-                        const ms = (track as any).MediaSources?.[0];
-                        let url: string | undefined =
-                          ms?.DirectStreamUrl || ms?.TranscodingUrl;
-                        // Ensure absolute URL with api_key
-                        try {
-                          const auth = JSON.parse(
-                            localStorage.getItem("authData") || "{}"
-                          );
-                          const server = auth?.serverAddress;
-                          const token = auth?.accessToken;
-                          if (!url) {
-                            if (server && token) {
-                              url = `${server}/Audio/${track.Id}/stream?static=true&api_key=${token}`;
-                            }
-                          } else if (
-                            url &&
-                            server &&
-                            token &&
-                            url.startsWith("/")
-                          ) {
-                            url = `${server}${url}${url.includes("?") ? `&api_key=${token}` : `?api_key=${token}`}`;
-                          }
-                        } catch {}
-                        if (!url) return;
-                        await downloadTrack({
-                          trackId: track.Id,
-                          name: track.Name,
-                          url,
-                          container: ms?.Container,
-                          bitrate: ms?.Bitrate,
-                        });
-                        setDownloadedMap((m) => ({ ...m, [track.Id!]: true }));
-                      }
-                    } finally {
-                      setDlLoading((m) => ({ ...m, [track.Id!]: false }));
-                      // Notify others UI might want to refresh
-                      try {
-                        window.dispatchEvent(
-                          new CustomEvent("downloadsUpdate")
-                        );
-                      } catch {}
-                    }
-                  }}
-                >
-                  {dlLoading[track.Id || ""] ? (
-                    <Loader2 className="w-3.5 h-3.5 animate-spin text-gray-400" />
-                  ) : (
-                    <Download
-                      className={`w-3.5 h-3.5 ${
-                        downloadedMap[track.Id || ""]
-                          ? "text-pink-600"
-                          : "text-gray-500"
-                      }`}
-                    />
-                  )}
-                </Button>
-              </div>
+              {/* Actions moved into dropdown */}
 
               {/* Duration */}
-              <div className="w-14 text-right">
+              <div className="w-10 text-right pr-1">
                 <span className="text-xs text-gray-500">
                   {formatDuration(track.RunTimeTicks)}
                 </span>
               </div>
 
-              {/* Track Options Menu */}
-              <div className="w-8 flex justify-center opacity-0 group-hover:opacity-100">
-                <IconDropdown
-                  size="xs"
-                  align="end"
-                  tooltip="More actions"
-                  menuWidthClass="w-52"
-                >
-                  <DropdownMenuItem
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      if (track.Id) {
-                        if (queue.length === 0) {
-                          // If queue is empty, start playing this track
-                          playNow(convertToMusicTrack(track));
-                        } else {
-                          // If queue has items, just add this track to the end
-                          addToQueue(convertToMusicTrack(track));
-                        }
-                      }
-                    }}
-                    className="cursor-pointer"
-                  >
-                    <Plus className="w-3 h-3 mr-2" />
-                    <span className="text-xs">Add to Queue</span>
-                  </DropdownMenuItem>
-                  <DropdownMenuItem
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      if (track.Id && track.Name) {
-                        setSelectedTrackForPlaylist({
-                          id: track.Id,
-                          name: track.Name,
-                        });
-                        setShowAddToPlaylist(true);
-                      }
-                    }}
-                    className="cursor-pointer"
-                  >
-                    <ListPlus className="w-3 h-3 mr-2" />
-                    <span className="text-xs">Add to Playlist</span>
-                  </DropdownMenuItem>
-                  {onToggleTrackFavorite && (
-                    <DropdownMenuItem
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        if (track.Id) {
-                          onToggleTrackFavorite(track.Id);
-                        }
-                      }}
-                      className="cursor-pointer"
+              {/* Dropdown trigger (hidden until hover) */}
+              <div className="w-6 flex justify-end opacity-0 group-hover:opacity-100 transition-opacity">
+                <Dropdown
+                  trigger={
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="h-6 w-6 p-0 text-gray-500 hover:text-pink-600 hover:bg-gray-100"
+                      onClick={(e) => e.stopPropagation()}
+                      aria-label="Track options"
                     >
-                      {favoriteLoading[track.Id || ""] ? (
-                        <Loader2 className="w-3 h-3 mr-2 animate-spin text-gray-400" />
-                      ) : (
-                        <Star
-                          className={`w-3 h-3 mr-2 ${
-                            trackFavorites[track.Id || ""]
-                              ? "text-pink-600 fill-pink-600"
-                              : "text-gray-400"
-                          }`}
-                        />
-                      )}
-                      <span className="text-xs">
-                        {trackFavorites[track.Id || ""]
-                          ? "Remove from Favourites"
-                          : "Add to Favourites"}
-                      </span>
-                    </DropdownMenuItem>
-                  )}
-                </IconDropdown>
+                      <MoreVertical className="w-4 h-4" />
+                    </Button>
+                  }
+                  actions={(() => {
+                    const actions = [] as any[];
+                    // Favourite toggle
+                    if (onToggleTrackFavorite && track.Id) {
+                      actions.push({
+                        id: "fav",
+                        label: trackFavorites[track.Id]
+                          ? "Remove favourite"
+                          : "Add to favourites",
+                        icon: (
+                          <Star
+                            className={`w-4 h-4 ${
+                              trackFavorites[track.Id]
+                                ? "text-pink-600 fill-pink-600"
+                                : ""
+                            }`}
+                          />
+                        ),
+                        onSelect: () => onToggleTrackFavorite(track.Id!),
+                        disabled: !!favoriteLoading[track.Id],
+                      });
+                    }
+                    // Add to playlist
+                    if (track.Id && track.Name) {
+                      actions.push({
+                        id: "add-to-playlist",
+                        label: "Add to playlist",
+                        icon: <Plus className="w-4 h-4" />,
+                        onSelect: () => {
+                          setSelectedTrackForPlaylist({
+                            id: track.Id!,
+                            name: track.Name!,
+                          });
+                          setShowAddToPlaylist(true);
+                        },
+                      });
+                    }
+                    // Download / remove
+                    if (track.Id) {
+                      const isDownloaded = downloadedMap[track.Id];
+                      actions.push({
+                        id: "download",
+                        label: isDownloaded ? "Remove download" : "Download",
+                        icon: (
+                          <Download
+                            className={`w-4 h-4 ${
+                              isDownloaded ? "text-pink-600" : ""
+                            }`}
+                          />
+                        ),
+                        onSelect: async () => {
+                          if (!track.Id) return;
+                          setDlLoading((m) => ({ ...m, [track.Id!]: true }));
+                          try {
+                            const has =
+                              downloadedMap[track.Id] ||
+                              !!(await getLocalUrlForTrack(track.Id));
+                            if (has) {
+                              await removeDownload(track.Id);
+                              setDownloadedMap((m) => ({
+                                ...m,
+                                [track.Id!]: false,
+                              }));
+                            } else {
+                              const ms = (track as any).MediaSources?.[0];
+                              let url: string | undefined =
+                                ms?.DirectStreamUrl || ms?.TranscodingUrl;
+                              try {
+                                const auth = JSON.parse(
+                                  localStorage.getItem("authData") || "{}"
+                                );
+                                const server = auth?.serverAddress;
+                                const token = auth?.accessToken;
+                                if (!url) {
+                                  if (server && token) {
+                                    url = `${server}/Audio/${track.Id}/stream?static=true&api_key=${token}`;
+                                  }
+                                } else if (
+                                  url &&
+                                  server &&
+                                  token &&
+                                  url.startsWith("/")
+                                ) {
+                                  url = `${server}${url}${url.includes("?") ? `&api_key=${token}` : `?api_key=${token}`}`;
+                                }
+                              } catch {}
+                              if (!url) return;
+                              await downloadTrack({
+                                trackId: track.Id,
+                                name: track.Name,
+                                url,
+                                container: ms?.Container,
+                                bitrate: ms?.Bitrate,
+                              });
+                              setDownloadedMap((m) => ({
+                                ...m,
+                                [track.Id!]: true,
+                              }));
+                            }
+                          } finally {
+                            setDlLoading((m) => ({
+                              ...m,
+                              [track.Id!]: false,
+                            }));
+                            try {
+                              window.dispatchEvent(
+                                new CustomEvent("downloadsUpdate")
+                              );
+                            } catch {}
+                          }
+                        },
+                        disabled: !!dlLoading[track.Id],
+                      });
+                    }
+                    // Add to queue
+                    actions.push({
+                      id: "queue",
+                      label: "Add to queue",
+                      icon: <ListPlus className="w-4 h-4" />,
+                      onSelect: () => {
+                        if (track.Id) {
+                          if (queue.length === 0) {
+                            playNow(convertToMusicTrack(track));
+                          } else {
+                            addToQueue(convertToMusicTrack(track));
+                          }
+                        }
+                      },
+                    });
+                    // Play next
+                    actions.push({
+                      id: "play-next",
+                      label: "Play next",
+                      icon: <ChevronsRight className="w-4 h-4" />,
+                      onSelect: () => {
+                        if (track.Id) {
+                          addToQueueNext(convertToMusicTrack(track));
+                        }
+                      },
+                    });
+                    return actions;
+                  })()}
+                  onOpenChange={(o) => {
+                    if (!o) {
+                      // ensure no parent click
+                    }
+                  }}
+                />
               </div>
             </div>
           ))}

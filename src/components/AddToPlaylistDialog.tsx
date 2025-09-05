@@ -10,12 +10,18 @@ import {
 } from "@/components/ui/dialog";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Card, CardContent } from "@/components/ui/card";
-import { addTrackToPlaylist, getPlaylistInfo } from "@/lib/jellyfin";
+import {
+  addTrackToPlaylist,
+  getPlaylistInfo,
+  getPlaylistItems,
+  addToFavorites,
+  checkIsFavorite,
+} from "@/lib/jellyfin";
 import { isCollectionDownloaded, downloadTrack } from "@/lib/downloads";
 import { localDb } from "@/lib/database";
 import { hybridData } from "@/lib/sync";
 import { logger } from "@/lib/logger";
-import { ListMusic, Plus, Loader2 } from "lucide-react";
+import { ListMusic, Plus, Loader2, Heart } from "lucide-react";
 import { BaseItemDto } from "@jellyfin/sdk/lib/generated-client/models";
 import BlurHashImage from "@/components/BlurHashImage";
 
@@ -35,6 +41,13 @@ export default function AddToPlaylistDialog({
   const [playlists, setPlaylists] = useState<BaseItemDto[]>([]);
   const [loading, setLoading] = useState(false);
   const [addingToPlaylist, setAddingToPlaylist] = useState<string | null>(null);
+  const [playlistContains, setPlaylistContains] = useState<
+    Record<string, boolean>
+  >({});
+  const [favoritePlaylistId, setFavoritePlaylistId] = useState<string | null>(
+    null
+  );
+  const [trackIsFavorite, setTrackIsFavorite] = useState<boolean>(false);
 
   // Get auth data from localStorage
   const authData = JSON.parse(localStorage.getItem("authData") || "{}");
@@ -69,6 +82,42 @@ export default function AddToPlaylistDialog({
       // Use hybrid data service for better performance
       const playlistsData = await hybridData.getPlaylists();
       setPlaylists(playlistsData);
+
+      // Identify a favourite playlist by name heuristics
+      const fav = playlistsData.find(
+        (p) =>
+          (p.Name || "").toLowerCase().includes("favourite") ||
+          (p.Name || "").toLowerCase().includes("favorite")
+      );
+      setFavoritePlaylistId(fav?.Id || null);
+
+      // Determine if track already added to each playlist (fetch items lazily in parallel but capped)
+      if (trackId) {
+        const containsMap: Record<string, boolean> = {};
+        await Promise.all(
+          playlistsData.slice(0, 25).map(async (pl) => {
+            try {
+              if (!pl.Id) return;
+              const items = await getPlaylistItems(pl.Id);
+              containsMap[pl.Id] = items.some((it: any) => it.Id === trackId);
+            } catch {}
+          })
+        );
+        setPlaylistContains(containsMap);
+      }
+
+      // Check favourite status of track
+      try {
+        const auth = JSON.parse(localStorage.getItem("authData") || "{}");
+        if (auth.serverAddress && auth.accessToken && trackId) {
+          const favStatus = await checkIsFavorite(
+            auth.serverAddress,
+            auth.accessToken,
+            trackId
+          );
+          setTrackIsFavorite(favStatus);
+        }
+      } catch {}
     } catch (error) {
       logger.error("Failed to load playlists:", error);
     } finally {
@@ -82,6 +131,22 @@ export default function AddToPlaylistDialog({
     setAddingToPlaylist(playlistId);
     try {
       await addTrackToPlaylist(playlistId, trackId);
+      setPlaylistContains((m) => ({ ...m, [playlistId]: true }));
+
+      // If this is the favourite playlist and track not yet favourite, favourite it
+      if (
+        favoritePlaylistId &&
+        playlistId === favoritePlaylistId &&
+        !trackIsFavorite
+      ) {
+        try {
+          const auth = JSON.parse(localStorage.getItem("authData") || "{}");
+          if (auth.serverAddress && auth.accessToken) {
+            await addToFavorites(auth.serverAddress, auth.accessToken, trackId);
+            setTrackIsFavorite(true);
+          }
+        } catch {}
+      }
       // Try to fetch updated playlist info from server
       try {
         const updated = await getPlaylistInfo(playlistId);
@@ -134,7 +199,7 @@ export default function AddToPlaylistDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-md">
+      <DialogContent className="max-w-md p-5 sm:p-6">
         <DialogHeader>
           <DialogTitle>Add to Playlist</DialogTitle>
           <DialogDescription>
@@ -143,8 +208,7 @@ export default function AddToPlaylistDialog({
               : "Add track to a playlist"}
           </DialogDescription>
         </DialogHeader>
-
-        <div className="py-4">
+        <div className="py-2">
           {loading ? (
             <div className="space-y-3">
               {Array.from({ length: 3 }).map((_, i) => (
@@ -160,8 +224,65 @@ export default function AddToPlaylistDialog({
           ) : playlists.length > 0 ? (
             <div className="max-h-64 overflow-y-auto pr-2">
               <div className="space-y-2">
+                {/* Synthetic Favourites entry (Jellyfin favourites aren't a real playlist) */}
+                <Card
+                  key="__favorites__"
+                  className={`transition-colors cursor-pointer hover:bg-gray-50 ${trackIsFavorite ? "opacity-70" : ""}`}
+                  onClick={() => {
+                    if (trackIsFavorite) return; // already favourited
+                    (async () => {
+                      setAddingToPlaylist("__favorites__");
+                      try {
+                        const auth = JSON.parse(
+                          localStorage.getItem("authData") || "{}"
+                        );
+                        if (auth.serverAddress && auth.accessToken) {
+                          await addToFavorites(
+                            auth.serverAddress,
+                            auth.accessToken,
+                            trackId
+                          );
+                          setTrackIsFavorite(true);
+                        }
+                        onOpenChange(false);
+                      } catch (e) {
+                        logger.error("Failed to favourite track:", e);
+                      } finally {
+                        setAddingToPlaylist(null);
+                      }
+                    })();
+                  }}
+                >
+                  <CardContent className="p-3">
+                    <div className="flex items-center space-x-3">
+                      <div className="w-12 h-12 rounded flex-shrink-0 overflow-hidden">
+                        <div className="w-full h-full bg-gradient-to-br from-pink-200 to-rose-200 flex items-center justify-center">
+                          <Heart className="w-6 h-6 text-pink-600 fill-pink-600" />
+                        </div>
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <h4 className="font-medium text-gray-900 truncate flex items-center gap-2">
+                          Favourites
+                          {trackIsFavorite && (
+                            <span className="text-[10px] px-1 py-0.5 rounded bg-gray-200 text-gray-700">
+                              Added
+                            </span>
+                          )}
+                        </h4>
+                        <p className="text-sm text-gray-500">
+                          Mark this track as favourite
+                        </p>
+                      </div>
+                      {addingToPlaylist === "__favorites__" && (
+                        <Loader2 className="w-4 h-4 animate-spin text-pink-600" />
+                      )}
+                    </div>
+                  </CardContent>
+                </Card>
                 {playlists.map((playlist) => {
                   const isAdding = addingToPlaylist === playlist.Id;
+                  const contains = playlistContains[playlist.Id || ""];
+                  const isFavList = favoritePlaylistId === playlist.Id;
 
                   return (
                     <Card
@@ -190,8 +311,18 @@ export default function AddToPlaylistDialog({
                             )}
                           </div>
                           <div className="flex-1 min-w-0">
-                            <h4 className="font-medium text-gray-900 truncate">
+                            <h4 className="font-medium text-gray-900 truncate flex items-center gap-2">
                               {playlist.Name}
+                              {isFavList && (
+                                <span className="text-[10px] px-1 py-0.5 rounded bg-pink-100 text-pink-700 border border-pink-200">
+                                  Fav
+                                </span>
+                              )}
+                              {contains && (
+                                <span className="text-[10px] px-1 py-0.5 rounded bg-gray-200 text-gray-700">
+                                  Added
+                                </span>
+                              )}
                             </h4>
                             <p className="text-sm text-gray-500">
                               {playlist.ChildCount || 0} tracks
@@ -220,8 +351,12 @@ export default function AddToPlaylistDialog({
           )}
         </div>
 
-        <DialogFooter>
-          <Button variant="outline" onClick={() => onOpenChange(false)}>
+        <DialogFooter className="mt-2">
+          <Button
+            variant="destructive"
+            className="bg-red-500 hover:bg-red-600"
+            onClick={() => onOpenChange(false)}
+          >
             Cancel
           </Button>
         </DialogFooter>

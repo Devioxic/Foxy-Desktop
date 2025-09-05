@@ -14,10 +14,7 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
-import {
-  DropdownMenuItem,
-  DropdownMenuSeparator,
-} from "@/components/ui/dropdown-menu";
+// Dropdown primitives removed
 import AddToPlaylistDialog from "@/components/AddToPlaylistDialog";
 import MusicPlayer from "@/components/MusicPlayer";
 import Sidebar from "@/components/Sidebar";
@@ -61,7 +58,7 @@ import {
   checkIsFavorite,
 } from "@/lib/jellyfin";
 import { hybridData } from "@/lib/sync";
-import IconDropdown from "@/components/IconDropdown";
+// Removed IconDropdown usage
 import BackButton from "@/components/BackButton";
 import { logger } from "@/lib/logger";
 
@@ -600,67 +597,58 @@ const AlbumView = () => {
                     )}
                   </Button>
 
-                  <IconDropdown
-                    align="start"
-                    tooltip="More actions"
-                    menuWidthClass="w-52"
-                  >
-                    <DropdownMenuItem
+                  {/* Inline buttons replacing dropdown */}
+                  <div className="flex items-center gap-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      disabled={tracks.length === 0}
                       onClick={(e) => {
                         e.stopPropagation();
-                        if (tracks.length > 0) {
-                          if (queue.length === 0) {
-                            playQueue(tracks as any, 0);
-                          } else {
-                            tracks.forEach((track) => addToQueue(track as any));
-                          }
+                        if (tracks.length === 0) return;
+                        if (queue.length === 0) {
+                          playQueue(tracks as any, 0);
+                        } else {
+                          tracks.forEach((track) => addToQueue(track as any));
                         }
                       }}
-                      className="cursor-pointer"
                     >
-                      <Plus className="w-4 h-4 mr-2" />
-                      <span>Add all to queue</span>
-                    </DropdownMenuItem>
-                    <DropdownMenuSeparator />
-                    <DropdownMenuItem
+                      <Plus className="w-3 h-3 mr-2" /> Add all to queue
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      disabled={tracks.length === 0}
                       onClick={(e) => {
                         e.stopPropagation();
+                        // Placeholder for future Add Album to Playlist feature
                       }}
-                      className="cursor-pointer"
                     >
-                      <ListPlus className="w-4 h-4 mr-2" />
-                      <span>Add to Playlist</span>
-                    </DropdownMenuItem>
-                    <DropdownMenuItem
+                      <ListPlus className="w-3 h-3 mr-2" /> Add to playlist
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      disabled={favoriteLoading[albumInfo.Id || ""]}
                       onClick={(e) => {
                         e.stopPropagation();
                         toggleAlbumFavorite();
                       }}
-                      disabled={favoriteLoading[albumInfo.Id || ""]}
-                      className={`cursor-pointer ${
-                        favoriteLoading[albumInfo.Id || ""]
-                          ? "cursor-not-allowed"
-                          : ""
-                      }`}
                     >
                       {favoriteLoading[albumInfo.Id || ""] ? (
-                        <Loader2 className="w-4 h-4 mr-2 animate-spin text-gray-400" />
+                        <Loader2 className="w-3 h-3 mr-2 animate-spin text-gray-400" />
                       ) : (
                         <Star
-                          className={`w-4 h-4 mr-2 transition-colors ${
+                          className={`w-3 h-3 mr-2 transition-colors ${
                             isAlbumFavorite
                               ? "text-pink-600 fill-pink-600"
                               : "text-gray-400"
                           }`}
                         />
                       )}
-                      <span>
-                        {isAlbumFavorite
-                          ? "Remove from Favourites"
-                          : "Add to Favourites"}
-                      </span>
-                    </DropdownMenuItem>
-                  </IconDropdown>
+                      {isAlbumFavorite ? "Unfavourite" : "Favourite"}
+                    </Button>
+                  </div>
                 </div>
               </div>
             </div>
