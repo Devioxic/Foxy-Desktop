@@ -619,6 +619,110 @@ export const getAlbumInfo = async (
   }
 };
 
+// Loudness normalization metadata (ReplayGain / R128) discovery
+export interface NormalizationInfo {
+  trackGainDb?: number;
+  albumGainDb?: number;
+  trackPeak?: number;
+  albumPeak?: number;
+  r128Track?: number; // LU or dB as provided by server metadata
+  r128Album?: number;
+}
+
+// Try to extract ReplayGain / R128 info for an item
+export const getTrackNormalizationInfo = async (
+  serverAddress: string,
+  accessToken: string,
+  trackId: string
+): Promise<NormalizationInfo | null> => {
+  try {
+    const api = jellyfin.createApi(serverAddress, accessToken);
+    const mediaInfoApi = getMediaInfoApi(api);
+    const userId = JSON.parse(localStorage.getItem("authData") || "{}").userId;
+
+    const info = await mediaInfoApi.getPlaybackInfo({
+      itemId: trackId,
+      userId,
+    });
+
+    const ms: any = info.data?.MediaSources?.[0] || {};
+    const audioStream: any = (ms.MediaStreams || []).find(
+      (s: any) => s?.Type === "Audio"
+    );
+
+    const out: NormalizationInfo = {};
+
+    const parseNum = (v: any): number | undefined => {
+      if (v == null) return undefined;
+      if (typeof v === "number" && isFinite(v)) return v;
+      if (typeof v === "string") {
+        const m = v.match(/-?\d+(?:\.\d+)?/);
+        if (m) return parseFloat(m[0]);
+      }
+      return undefined;
+    };
+
+    const scanObject = (obj: any) => {
+      if (!obj || typeof obj !== "object") return;
+      for (const [k, v] of Object.entries(obj)) {
+        const key = k.toLowerCase();
+        // ReplayGain (commonly stored as strings with ' dB')
+        if (key.includes("replay") && key.includes("gain")) {
+          const val = parseNum(v);
+          if (val == null) continue;
+          if (key.includes("track")) out.trackGainDb ??= val;
+          else if (key.includes("album")) out.albumGainDb ??= val;
+        }
+        if (key.includes("replay") && key.includes("peak")) {
+          const val = parseNum(v);
+          if (val == null) continue;
+          if (key.includes("track")) out.trackPeak ??= val;
+          else if (key.includes("album")) out.albumPeak ??= val;
+        }
+        // R128 (EBU) fields
+        if (
+          key.includes("r128") &&
+          key.includes("track") &&
+          (key.includes("gain") || key.includes("loud") || key.includes("lu"))
+        ) {
+          const val = parseNum(v);
+          if (val != null) out.r128Track ??= val;
+        }
+        if (
+          key.includes("r128") &&
+          key.includes("album") &&
+          (key.includes("gain") || key.includes("loud") || key.includes("lu"))
+        ) {
+          const val = parseNum(v);
+          if (val != null) out.r128Album ??= val;
+        }
+      }
+    };
+
+    scanObject(ms);
+    scanObject(audioStream);
+
+    // Also scan nested 'Tags' or 'TagItems' if present
+    const tags = (ms as any).Tags || (ms as any).TagItems || [];
+    if (Array.isArray(tags)) {
+      for (const t of tags) scanObject(t);
+    }
+
+    // If we didn't find anything, return null so callers can fallback
+    const hasAny =
+      out.trackGainDb != null ||
+      out.albumGainDb != null ||
+      out.trackPeak != null ||
+      out.albumPeak != null ||
+      out.r128Track != null ||
+      out.r128Album != null;
+    return hasAny ? out : null;
+  } catch (e) {
+    logger.info("No normalization metadata available for track", e);
+    return null;
+  }
+};
+
 // Get album tracks/items
 export const getAlbumItems = async (
   serverAddress: string,

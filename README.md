@@ -13,6 +13,8 @@ Foxy Desktop is a modern music player for your Jellyfin library, designed to pro
 - Full support for Jellyfin music libraries
 - Integrates with now playing on your desktop
 - Support for timesynced lyrics
+- Crossfade between tracks
+- Offline playback (beta)
 
 ## Screenshots
 ![Home view](public/home.png)

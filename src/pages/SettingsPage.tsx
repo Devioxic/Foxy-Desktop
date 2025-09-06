@@ -382,7 +382,8 @@ function PlaybackSettingsPanel() {
         <div className="space-y-0.5">
           <div className="text-sm font-medium">Normalize Volume</div>
           <div className="text-xs text-gray-500">
-            Reduce loudness differences (placeholder)
+            Level songs using ReplayGain/R128 when available; falls back to
+            gentle compression.
           </div>
         </div>
         <Switch

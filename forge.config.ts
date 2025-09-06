@@ -33,16 +33,7 @@ const config: ForgeConfig = {
     new MakerDMG({
       icon: "public/icon.icns",
     }),
-    //new MakerFlatpak({
-    //  options: {
-    //    files: [],
-    //    icon: "public/icon@0.5x.png",
-    //    id: "com.tillycloud.foxydesktop",
-    //    productName: "Foxy",
-    //    genericName: "Jellyfin Music Player",
-    //    description: "A modern desktop music player for Jellyfin",
-    //  },
-    //}),
+    
   ],
   plugins: [
     new VitePlugin({

@@ -11,6 +11,7 @@ import {
   reportPlaybackProgress,
   reportPlaybackStopped,
   getAudioStreamInfo,
+  getTrackNormalizationInfo,
 } from "@/lib/jellyfin";
 import { getLocalUrlForTrack } from "@/lib/downloads";
 
@@ -164,6 +165,9 @@ export const MusicProvider: React.FC<MusicProviderProps> = ({ children }) => {
   const masterGainRef = useRef<GainNode | null>(null);
   const gainARef = useRef<GainNode | null>(null);
   const gainBRef = useRef<GainNode | null>(null);
+  // Track per-stream normalization gain (linear scalar), applied on top of fade curve
+  const normGainARef = useRef<number>(1);
+  const normGainBRef = useRef<number>(1);
   const fadingOutRef = useRef<boolean>(false);
   const pendingFadeInRef = useRef<boolean>(false);
   const crossfadeAdvancedRef = useRef<boolean>(false);
@@ -372,7 +376,62 @@ export const MusicProvider: React.FC<MusicProviderProps> = ({ children }) => {
     }
 
     master.connect(ctx.destination);
+
+    // Optionally apply normalization immediately to the active stream
+    (async () => {
+      try {
+        const g = useARef.current ? gainARef.current : gainBRef.current;
+        if (!g) return;
+        const now = ctx.currentTime;
+        if (
+          normalizeEnabled &&
+          currentTrackRef.current &&
+          serverAddressRef.current &&
+          accessTokenRef.current
+        ) {
+          const meta = await getTrackNormalizationInfo(
+            serverAddressRef.current,
+            accessTokenRef.current,
+            currentTrackRef.current.Id
+          );
+          const norm = computeNormalizationScalar(meta);
+          if (useARef.current) normGainARef.current = norm;
+          else normGainBRef.current = norm;
+          g.gain.cancelScheduledValues(now);
+          g.gain.setValueAtTime(Math.max(0.0001, norm), now);
+        } else if (!normalizeEnabled) {
+          // Reset normalization scalar to 1
+          if (useARef.current) normGainARef.current = 1;
+          else normGainBRef.current = 1;
+          g.gain.cancelScheduledValues(now);
+          g.gain.setValueAtTime(1, now);
+        }
+      } catch {}
+    })();
   }, [normalizeEnabled]);
+
+  // Compute a linear gain scalar from normalization metadata.
+  // Prefer album gain; fall back to track gain; otherwise use R128 numbers as dB.
+  const computeNormalizationScalar = (
+    meta: {
+      trackGainDb?: number;
+      albumGainDb?: number;
+      r128Track?: number;
+      r128Album?: number;
+    } | null
+  ): number => {
+    if (!meta) return 1;
+    const db =
+      (typeof meta.albumGainDb === "number" ? meta.albumGainDb : undefined) ??
+      (typeof meta.trackGainDb === "number" ? meta.trackGainDb : undefined) ??
+      (typeof meta.r128Album === "number" ? meta.r128Album : undefined) ??
+      (typeof meta.r128Track === "number" ? meta.r128Track : undefined);
+    if (typeof db !== "number" || !isFinite(db)) return 1;
+    // ReplayGain is typically negative for loud tracks; convert dB to linear
+    const linear = Math.pow(10, db / 20);
+    // Clamp to reasonable range to avoid extreme changes
+    return Math.max(0.25, Math.min(4, linear));
+  };
 
   // Helper function to update Media Session API
   const updateMediaSession = (track: Track | null) => {
@@ -766,6 +825,13 @@ export const MusicProvider: React.FC<MusicProviderProps> = ({ children }) => {
       const targetGain = useA ? gainBRef.current : gainARef.current;
       const currentGain = useA ? gainARef.current : gainBRef.current;
       const currentEl = useA ? audioA : audioB;
+      const setNormGain = useA
+        ? (v: number) => {
+            normGainBRef.current = v;
+          }
+        : (v: number) => {
+            normGainARef.current = v;
+          };
       // Capture whether this transition is manual before we reset the flag later
       const wasManual = manualAdvanceRef.current;
       targetEl.src = streamUrl;
@@ -793,6 +859,34 @@ export const MusicProvider: React.FC<MusicProviderProps> = ({ children }) => {
         } catch {}
       })();
 
+      // Apply per-track normalization gain on the target stream gain node
+      let normTargetScalar = 1;
+      try {
+        const meta = normalizeEnabled
+          ? await getTrackNormalizationInfo(
+              serverAddress,
+              accessToken,
+              targetTrack!.Id
+            )
+          : null;
+        normTargetScalar = computeNormalizationScalar(meta);
+        setNormGain(normTargetScalar);
+        const g = targetGain;
+        const ctx = audioCtxRef.current;
+        if (g && ctx) {
+          const now = ctx.currentTime;
+          // Set base to normalized value; fade scheduling below multiplies appropriately
+          g.gain.cancelScheduledValues(now);
+          g.gain.setValueAtTime(
+            Math.max(
+              0.0001,
+              normTargetScalar * (crossfadeSeconds > 0 ? 0.0001 : 1)
+            ),
+            now
+          );
+        }
+      } catch {}
+
       // Prepare fade-in on the target element and fade-out current if playing
       try {
         const g = targetGain;
@@ -808,10 +902,20 @@ export const MusicProvider: React.FC<MusicProviderProps> = ({ children }) => {
             0.05,
             pendingFadeDurationRef.current || crossfadeSeconds
           );
+          // Use the last computed normalization scalar for the target/current stream
+          const normTarget = useA ? normGainBRef.current : normGainARef.current;
+          // If we just computed a scalar for the target element above, prefer it now
+          const appliedNormTarget = Math.max(
+            0.0001,
+            normTargetScalar || normTarget || 1
+          );
+          const normCurrent = useA
+            ? normGainARef.current
+            : normGainBRef.current;
           g.gain.cancelScheduledValues(now);
           if (doFade && currentGain) {
             // Equal-power crossfade for better perceived overlap
-            const currentStart = Math.max(0.0001, currentGain.gain.value);
+            const currentStart = Math.max(0.0001, currentGain.gain.value || 1);
             const sampleCount = Math.max(
               128,
               Math.min(2048, Math.floor(fade * 256))
@@ -824,7 +928,9 @@ export const MusicProvider: React.FC<MusicProviderProps> = ({ children }) => {
               // In: sin curve 0->1, Out: cos curve 1->0
               const sinV = Math.sin(theta);
               const cosV = Math.cos(theta);
-              curveIn[i] = Math.max(0.0001, sinV);
+              // Apply normalization scalar to fade curves
+              curveIn[i] = Math.max(0.0001, sinV * appliedNormTarget);
+              // currentStart already reflects any prior normalization on the old stream
               curveOut[i] = Math.max(0.0001, cosV * currentStart);
             }
             // Small lead so the new track is audible just before the old fades
@@ -833,7 +939,10 @@ export const MusicProvider: React.FC<MusicProviderProps> = ({ children }) => {
             g.gain.setValueCurveAtTime(curveIn, now, fade);
             // Schedule current fade-out with slight delay for perceived overlap
             currentGain.gain.cancelScheduledValues(now);
-            currentGain.gain.setValueAtTime(currentStart, now);
+            currentGain.gain.setValueAtTime(
+              Math.max(0.0001, currentStart),
+              now
+            );
             currentGain.gain.setValueCurveAtTime(
               curveOut,
               now + lead,
@@ -844,7 +953,7 @@ export const MusicProvider: React.FC<MusicProviderProps> = ({ children }) => {
             );
           } else {
             // Manual or no-crossfade: snap to new track
-            g.gain.setValueAtTime(1, now);
+            g.gain.setValueAtTime(Math.max(0.0001, appliedNormTarget), now);
             if (isPlaying && currentGain) {
               currentGain.gain.cancelScheduledValues(now);
               currentGain.gain.setValueAtTime(0.0001, now);
@@ -1161,14 +1270,17 @@ export const MusicProvider: React.FC<MusicProviderProps> = ({ children }) => {
         el.src = newUrl;
         setCurrentSrc(newUrl);
         el.currentTime = pos; // keep position best-effort
-        // Reset gain to current volume
+        // Reset per-stream gain to current normalization scalar (not master volume)
         try {
           const g = useARef.current ? gainARef.current : gainBRef.current;
           const ctx = audioCtxRef.current;
           if (g && ctx) {
             const now = ctx.currentTime;
             g.gain.cancelScheduledValues(now);
-            g.gain.setValueAtTime(volume, now);
+            const norm = useARef.current
+              ? normGainARef.current
+              : normGainBRef.current;
+            g.gain.setValueAtTime(Math.max(0.0001, norm || 1), now);
           }
         } catch {}
         if (wasPlaying) {
@@ -1267,12 +1379,26 @@ export const MusicProvider: React.FC<MusicProviderProps> = ({ children }) => {
           const g = useARef.current ? gainARef.current : gainBRef.current;
           if (g && ctx) {
             const now = ctx.currentTime;
-            const start = crossfadeSeconds > 0 ? 0.0001 : 1;
+            // Compute normalization for the first track if enabled
+            let norm = 1;
+            if (normalizeEnabled) {
+              try {
+                const meta = await getTrackNormalizationInfo(
+                  serverAddress,
+                  accessToken,
+                  first.Id
+                );
+                norm = computeNormalizationScalar(meta);
+                if (useARef.current) normGainARef.current = norm;
+                else normGainBRef.current = norm;
+              } catch {}
+            }
+            const start = crossfadeSeconds > 0 ? 0.0001 : norm;
             g.gain.cancelScheduledValues(now);
             g.gain.setValueAtTime(start, now);
             if (crossfadeSeconds > 0) {
               g.gain.linearRampToValueAtTime(
-                1,
+                Math.max(0.0001, norm),
                 now + Math.max(0.05, crossfadeSeconds)
               );
             }
