@@ -18,7 +18,6 @@ const createWindow = async () => {
       contextIsolation: true,
       nodeIntegration: false,
       sandbox: false,
-      devTools: true,
     },
     autoHideMenuBar: true,
     icon: path.join(__dirname, "../public/icon.png"),
@@ -47,7 +46,6 @@ const createWindow = async () => {
   });
 
   win.setMenu(null); // Hide the menu bar
-  win.webContents.openDevTools();
 };
 
 // Register custom protocol before app is ready
