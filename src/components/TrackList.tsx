@@ -11,6 +11,7 @@ import {
   Download,
   ChevronsRight,
   MoreVertical,
+  Trash2,
 } from "lucide-react";
 import { findArtistByName } from "@/lib/jellyfin";
 import {
@@ -55,6 +56,8 @@ interface TrackListProps {
   usePlaylistIndex?: boolean;
   // If true, treat every track as already downloaded (skip probe)
   assumeAllDownloaded?: boolean;
+  // If present, enables per-track removal from that playlist
+  playlistId?: string;
 }
 
 const TrackList: React.FC<TrackListProps> = React.memo(
@@ -77,9 +80,11 @@ const TrackList: React.FC<TrackListProps> = React.memo(
     formatDuration,
     usePlaylistIndex = false,
     assumeAllDownloaded = false,
+    playlistId,
   }) => {
     const navigate = useNavigate();
     const { queue, playNow, addToQueue, addToQueueNext } = useMusicPlayer();
+    const [removing, setRemoving] = useState<Record<string, boolean>>({});
     const [showAddToPlaylist, setShowAddToPlaylist] = useState(false);
     const [selectedTrackForPlaylist, setSelectedTrackForPlaylist] = useState<{
       id: string;
@@ -432,6 +437,54 @@ const TrackList: React.FC<TrackListProps> = React.memo(
                           }
                         },
                       });
+                      // Remove from this playlist (when in playlist view)
+                      if (playlistId && track.Id) {
+                        actions.push({ separator: true } as any);
+                        actions.push({
+                          id: "remove-from-playlist",
+                          label: "Remove from this playlist",
+                          destructive: true,
+                          icon: <Trash2 className="w-4 h-4" />,
+                          onSelect: async () => {
+                            try {
+                              setRemoving((m) => ({ ...m, [track.Id!]: true }));
+                              const { removeItemsFromPlaylist } = await import(
+                                "@/lib/jellyfin"
+                              );
+                              const entryId =
+                                (track as any).PlaylistItemId || track.Id!;
+                              await removeItemsFromPlaylist(playlistId, [
+                                entryId,
+                              ]);
+                              // Optimistically update UI list if parent provided tracks
+                              try {
+                                const evt = new CustomEvent(
+                                  "playlistItemRemoved",
+                                  {
+                                    detail: {
+                                      playlistId,
+                                      trackId: track.Id,
+                                      entryId,
+                                    },
+                                  }
+                                );
+                                window.dispatchEvent(evt);
+                              } catch {}
+                            } catch (err) {
+                              console.error(
+                                "Failed to remove from playlist",
+                                err
+                              );
+                            } finally {
+                              setRemoving((m) => ({
+                                ...m,
+                                [track.Id!]: false,
+                              }));
+                            }
+                          },
+                          disabled: !!removing[track.Id],
+                        });
+                      }
                       return actions;
                     })()}
                     onOpenChange={(open) => {

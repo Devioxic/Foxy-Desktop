@@ -400,6 +400,19 @@ const PlaylistView = () => {
     }
   };
 
+  useEffect(() => {
+    const onRemoved = (e: any) => {
+      if (!playlistId) return;
+      try {
+        const { playlistId: pid } = (e as CustomEvent).detail || {};
+        if (pid === playlistId) loadPlaylistData();
+      } catch {}
+    };
+    window.addEventListener("playlistItemRemoved", onRemoved as any);
+    return () =>
+      window.removeEventListener("playlistItemRemoved", onRemoved as any);
+  }, [playlistId]);
+
   if (loading) {
     return (
       <div className="min-h-screen bg-gray-50">
@@ -631,6 +644,7 @@ const PlaylistView = () => {
                 showArtistFromTrack={true}
                 formatDuration={formatDuration}
                 usePlaylistIndex
+                playlistId={playlistId!}
               />
             </div>
           </div>

@@ -1496,6 +1496,39 @@ export const addItemsToPlaylist = async (
   }
 };
 
+// Remove one or more tracks from an existing playlist
+export const removeItemsFromPlaylist = async (
+  playlistId: string,
+  entryIds: string[]
+) => {
+  try {
+    if (!Array.isArray(entryIds) || entryIds.length === 0) return;
+    const authData = JSON.parse(localStorage.getItem("authData") || "{}");
+    const server = authData.serverAddress;
+    const token = authData.accessToken;
+    if (!server || !token) throw new Error("No authentication data found");
+
+    // DELETE /Playlists/{playlistId}/Items?EntryIds=... (entry IDs, not item IDs)
+    const params = new URLSearchParams();
+    params.set("EntryIds", entryIds.join(","));
+    params.set("api_key", token);
+    const url = `${server}/Playlists/${playlistId}/Items?${params.toString()}`;
+    const res = await fetch(url, {
+      method: "DELETE",
+      headers: {
+        Authorization: `MediaBrowser Token=\"${token}\"`,
+      },
+    });
+    if (!res.ok) {
+      throw new Error(`Failed to remove items from playlist: ${res.status}`);
+    }
+    return true;
+  } catch (error) {
+    logger.error("Error removing items from playlist:", error);
+    throw error;
+  }
+};
+
 // Add multiple tracks to an existing playlist
 export const addTracksToPlaylist = async (
   playlistId: string,
