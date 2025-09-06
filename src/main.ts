@@ -9,6 +9,8 @@ declare const MAIN_WINDOW_VITE_DEV_SERVER_URL: string | undefined;
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
 declare const MAIN_WINDOW_VITE_NAME: string | undefined;
 
+if (require('electron-squirrel-startup')) app.quit();
+
 const createWindow = async () => {
   const win = new BrowserWindow({
     width: 1280,
