@@ -11,11 +11,13 @@ import {
 import { Skeleton } from "@/components/ui/skeleton";
 import { Card, CardContent } from "@/components/ui/card";
 import {
+  addItemsToPlaylist,
   addTrackToPlaylist,
   getPlaylistInfo,
   getPlaylistItems,
   addToFavorites,
   checkIsFavorite,
+  removeItemsFromPlaylist,
 } from "@/lib/jellyfin";
 import { isCollectionDownloaded, downloadTrack } from "@/lib/downloads";
 import { localDb } from "@/lib/database";
@@ -44,6 +46,15 @@ export default function AddToPlaylistDialog({
   const [playlistContains, setPlaylistContains] = useState<
     Record<string, boolean>
   >({});
+  // Staged membership (what the user intends after toggling)
+  const [stagedContains, setStagedContains] = useState<Record<string, boolean>>(
+    {}
+  );
+  // Optional map of playlistId -> entryId for this track (when it exists)
+  const [entryIdMap, setEntryIdMap] = useState<Record<string, string | null>>(
+    {}
+  );
+  const [saving, setSaving] = useState(false);
   const [favoritePlaylistId, setFavoritePlaylistId] = useState<string | null>(
     null
   );
@@ -94,16 +105,21 @@ export default function AddToPlaylistDialog({
       // Determine if track already added to each playlist (fetch items lazily in parallel but capped)
       if (trackId) {
         const containsMap: Record<string, boolean> = {};
+        const entryIds: Record<string, string | null> = {};
         await Promise.all(
           playlistsData.slice(0, 25).map(async (pl) => {
             try {
               if (!pl.Id) return;
               const items = await getPlaylistItems(pl.Id);
-              containsMap[pl.Id] = items.some((it: any) => it.Id === trackId);
+              const it = items.find((it: any) => it.Id === trackId);
+              containsMap[pl.Id] = !!it;
+              entryIds[pl.Id] = it?.PlaylistItemId || null;
             } catch {}
           })
         );
         setPlaylistContains(containsMap);
+        setStagedContains(containsMap);
+        setEntryIdMap(entryIds);
       }
 
       // Check favourite status of track
@@ -125,75 +141,109 @@ export default function AddToPlaylistDialog({
     }
   };
 
-  const handleAddToPlaylist = async (playlistId: string) => {
-    if (!playlistId) return;
+  // Toggle staged membership
+  const togglePlaylist = (playlistId: string) => {
+    setStagedContains((prev) => ({
+      ...prev,
+      [playlistId]: !prev[playlistId],
+    }));
+  };
 
-    setAddingToPlaylist(playlistId);
+  const isDirty = React.useMemo(() => {
+    const keys = Object.keys(stagedContains);
+    return keys.some((k) => stagedContains[k] !== playlistContains[k]);
+  }, [stagedContains, playlistContains]);
+
+  const applyChanges = async () => {
+    if (!isDirty) {
+      onOpenChange(false);
+      return;
+    }
+    setSaving(true);
     try {
-      await addTrackToPlaylist(playlistId, trackId);
-      setPlaylistContains((m) => ({ ...m, [playlistId]: true }));
-
-      // If this is the favourite playlist and track not yet favourite, favourite it
-      if (
-        favoritePlaylistId &&
-        playlistId === favoritePlaylistId &&
-        !trackIsFavorite
-      ) {
-        try {
-          const auth = JSON.parse(localStorage.getItem("authData") || "{}");
-          if (auth.serverAddress && auth.accessToken) {
-            await addToFavorites(auth.serverAddress, auth.accessToken, trackId);
-            setTrackIsFavorite(true);
-          }
-        } catch {}
+      const toAdd: string[] = [];
+      const toRemove: string[] = [];
+      for (const pid of Object.keys(stagedContains)) {
+        const want = stagedContains[pid];
+        const had = playlistContains[pid];
+        if (want && !had) toAdd.push(pid);
+        if (!want && had) toRemove.push(pid);
       }
-      // Try to fetch updated playlist info from server
-      try {
-        const updated = await getPlaylistInfo(playlistId);
-        if (updated) {
-          // Update in-memory list so the dialog reflects the new count immediately
-          setPlaylists((prev) =>
-            prev.map((p) => (p.Id === playlistId ? { ...p, ...updated } : p))
-          );
-
-          // Update local DB cache so Playlists page (which uses hybrid data) shows correct ChildCount
+      // Process additions
+      await Promise.all(
+        toAdd.map(async (pid) => {
           try {
-            await localDb.initialize();
-            await localDb.savePlaylists([updated]);
-          } catch (cacheErr) {}
-        }
-      } catch (infoErr) {
-        // Optimistic UI: bump count locally if we have one
-        setPlaylists((prev) =>
-          prev.map((p) =>
-            p.Id === playlistId
-              ? { ...p, ChildCount: (p.ChildCount || 0) + 1 }
-              : p
-          )
-        );
-      }
-
-      // If playlist is marked as downloaded, auto-download this track
-      try {
-        if (await isCollectionDownloaded(playlistId)) {
-          const auth = JSON.parse(localStorage.getItem("authData") || "{}");
-          const url = `${auth.serverAddress}/Audio/${trackId}/stream?static=true&api_key=${auth.accessToken}`;
-          await downloadTrack({ trackId, name: trackName, url });
-        }
-      } catch {}
-
-      // Notify other views to refresh (Playlists page listens for this)
+            await addItemsToPlaylist(pid, [trackId]);
+            // If favourite playlist, also favourite the track
+            if (
+              favoritePlaylistId &&
+              pid === favoritePlaylistId &&
+              !trackIsFavorite
+            ) {
+              const auth = JSON.parse(localStorage.getItem("authData") || "{}");
+              if (auth.serverAddress && auth.accessToken) {
+                await addToFavorites(
+                  auth.serverAddress,
+                  auth.accessToken,
+                  trackId
+                );
+                setTrackIsFavorite(true);
+              }
+            }
+            // If playlist is downloaded, auto-download this track
+            try {
+              if (await isCollectionDownloaded(pid)) {
+                const auth = JSON.parse(
+                  localStorage.getItem("authData") || "{}"
+                );
+                const url = `${auth.serverAddress}/Audio/${trackId}/stream?static=true&api_key=${auth.accessToken}`;
+                await downloadTrack({ trackId, name: trackName, url });
+              }
+            } catch {}
+            // Update local counts optimistically
+            setPlaylists((prev) =>
+              prev.map((p) =>
+                p.Id === pid ? { ...p, ChildCount: (p.ChildCount || 0) + 1 } : p
+              )
+            );
+          } catch (e) {
+            logger.error(`Failed adding to playlist ${pid}`, e);
+          }
+        })
+      );
+      // Process removals
+      await Promise.all(
+        toRemove.map(async (pid) => {
+          try {
+            let entryId = entryIdMap[pid];
+            if (!entryId) {
+              // Fetch to find the entry id
+              const items = await getPlaylistItems(pid);
+              const it = items.find((it: any) => it.Id === trackId);
+              entryId = it?.PlaylistItemId || null;
+            }
+            if (entryId) {
+              await removeItemsFromPlaylist(pid, [entryId]);
+              setPlaylists((prev) =>
+                prev.map((p) =>
+                  p.Id === pid
+                    ? { ...p, ChildCount: Math.max(0, (p.ChildCount || 1) - 1) }
+                    : p
+                )
+              );
+            }
+          } catch (e) {
+            logger.error(`Failed removing from playlist ${pid}`, e);
+          }
+        })
+      );
+      // Notify other views to refresh
       try {
         window.dispatchEvent(new CustomEvent("syncUpdate"));
       } catch {}
-
-      // Close dialog
       onOpenChange(false);
-    } catch (error) {
-      logger.error("Failed to add track to playlist:", error);
-      // Show error feedback (you could add a toast here)
     } finally {
-      setAddingToPlaylist(null);
+      setSaving(false);
     }
   };
 
@@ -281,16 +331,16 @@ export default function AddToPlaylistDialog({
                 </Card>
                 {playlists.map((playlist) => {
                   const isAdding = addingToPlaylist === playlist.Id;
-                  const contains = playlistContains[playlist.Id || ""];
+                  const original = playlistContains[playlist.Id || ""];
+                  const desired = stagedContains[playlist.Id || ""];
+                  const contains = desired; // reflect staged state
                   const isFavList = favoritePlaylistId === playlist.Id;
 
                   return (
                     <Card
                       key={playlist.Id}
-                      className="cursor-pointer hover:bg-gray-50 transition-colors"
-                      onClick={() =>
-                        !isAdding && handleAddToPlaylist(playlist.Id!)
-                      }
+                      className={`cursor-pointer transition-colors ${contains ? "hover:bg-gray-50" : "hover:bg-gray-50"}`}
+                      onClick={() => !isAdding && togglePlaylist(playlist.Id!)}
                     >
                       <CardContent className="p-3">
                         <div className="flex items-center space-x-3">
@@ -318,9 +368,16 @@ export default function AddToPlaylistDialog({
                                   Fav
                                 </span>
                               )}
-                              {contains && (
+                              {original && (
                                 <span className="text-[10px] px-1 py-0.5 rounded bg-gray-200 text-gray-700">
                                   Added
+                                </span>
+                              )}
+                              {desired !== original && (
+                                <span
+                                  className={`text-[10px] px-1 py-0.5 rounded border ${desired ? "bg-green-100 text-green-700 border-green-200" : "bg-red-100 text-red-700 border-red-200"}`}
+                                >
+                                  {desired ? "Will add" : "Will remove"}
                                 </span>
                               )}
                             </h4>
@@ -351,14 +408,21 @@ export default function AddToPlaylistDialog({
           )}
         </div>
 
-        <DialogFooter className="mt-2">
-          <Button
-            variant="destructive"
-            className="bg-red-500 hover:bg-red-600"
-            onClick={() => onOpenChange(false)}
-          >
+        <DialogFooter className="mt-2 flex items-center justify-between">
+          <Button variant="outline" onClick={() => onOpenChange(false)}>
             Cancel
           </Button>
+          {isDirty && (
+            <Button onClick={applyChanges} disabled={saving}>
+              {saving ? (
+                <span className="inline-flex items-center gap-2">
+                  <Loader2 className="w-4 h-4 animate-spin" /> Saving
+                </span>
+              ) : (
+                "Done"
+              )}
+            </Button>
+          )}
         </DialogFooter>
       </DialogContent>
     </Dialog>
