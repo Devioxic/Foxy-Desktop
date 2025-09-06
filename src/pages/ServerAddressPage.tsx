@@ -199,7 +199,7 @@ const ServerAddressPage = () => {
         </form>
 
         <div className="text-center text-pink-700/70 text-sm">
-          <p>Foxy Desktop v1.0.0.rc3</p>
+          <p>Foxy Desktop v1.0.0</p>
         </div>
       </div>
     </div>

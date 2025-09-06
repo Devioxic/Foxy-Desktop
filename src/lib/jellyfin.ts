@@ -41,7 +41,7 @@ function getDeviceId() {
 export const jellyfin = new Jellyfin({
   clientInfo: {
     name: "Foxy",
-    version: "1.0.0.rc3",
+    version: "1.0.0",
   },
   deviceInfo: {
     name: "Foxy Desktop",
