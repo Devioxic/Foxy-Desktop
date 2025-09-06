@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
+import { Button } from "@/components/ui/button";
 //
 import { logger } from "@/lib/logger";
 import Sidebar from "@/components/Sidebar";
@@ -37,6 +38,9 @@ const SearchPage: React.FC = () => {
     JSON.parse(localStorage.getItem("authData") || "{}")
   );
   const [showAllSongs, setShowAllSongs] = useState(false);
+  const [showAllArtists, setShowAllArtists] = useState(false);
+  const [showAllAlbums, setShowAllAlbums] = useState(false);
+  const [showAllPlaylists, setShowAllPlaylists] = useState(false);
 
   const query = searchParams.get("q") || "";
 
@@ -174,12 +178,27 @@ const SearchPage: React.FC = () => {
                   {/* Artists Section (first) */}
                   {results.artists.length > 0 && (
                     <div>
-                      <h2 className="text-xl font-bold text-gray-900 mb-4 flex items-center">
-                        <User className="w-5 h-5 mr-2" />
-                        Artists ({results.artists.length})
-                      </h2>
+                      <div className="mb-4 flex items-center justify-between">
+                        <h2 className="text-xl font-bold text-gray-900 flex items-center">
+                          <User className="w-5 h-5 mr-2" />
+                          Artists ({results.artists.length})
+                        </h2>
+                        {results.artists.length > 12 && (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="text-pink-600 hover:text-pink-700"
+                            onClick={() => setShowAllArtists((v) => !v)}
+                          >
+                            {showAllArtists ? "See less" : "See all"}
+                          </Button>
+                        )}
+                      </div>
                       <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-4">
-                        {results.artists.slice(0, 12).map((artist) => (
+                        {(showAllArtists
+                          ? results.artists
+                          : results.artists.slice(0, 12)
+                        ).map((artist) => (
                           <div
                             key={artist.Id}
                             className="group cursor-pointer transition-all duration-200"
@@ -218,12 +237,27 @@ const SearchPage: React.FC = () => {
                   {/* Albums Section (second) */}
                   {results.albums.length > 0 && (
                     <div>
-                      <h2 className="text-xl font-bold text-gray-900 mb-4 flex items-center">
-                        <Disc3 className="w-5 h-5 mr-2" />
-                        Albums ({results.albums.length})
-                      </h2>
+                      <div className="mb-4 flex items-center justify-between">
+                        <h2 className="text-xl font-bold text-gray-900 flex items-center">
+                          <Disc3 className="w-5 h-5 mr-2" />
+                          Albums ({results.albums.length})
+                        </h2>
+                        {results.albums.length > 12 && (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="text-pink-600 hover:text-pink-700"
+                            onClick={() => setShowAllAlbums((v) => !v)}
+                          >
+                            {showAllAlbums ? "See less" : "See all"}
+                          </Button>
+                        )}
+                      </div>
                       <div className="flex flex-wrap justify-start gap-6">
-                        {results.albums.slice(0, 12).map((album) => (
+                        {(showAllAlbums
+                          ? results.albums
+                          : results.albums.slice(0, 12)
+                        ).map((album) => (
                           <AlbumCard
                             key={album.Id}
                             item={album}
@@ -263,12 +297,27 @@ const SearchPage: React.FC = () => {
                   {/* Playlists Section */}
                   {results.playlists.length > 0 && (
                     <div>
-                      <h2 className="text-xl font-bold text-gray-900 mb-4 flex items-center">
-                        <ListMusic className="w-5 h-5 mr-2" />
-                        Playlists ({results.playlists.length})
-                      </h2>
+                      <div className="mb-4 flex items-center justify-between">
+                        <h2 className="text-xl font-bold text-gray-900 flex items-center">
+                          <ListMusic className="w-5 h-5 mr-2" />
+                          Playlists ({results.playlists.length})
+                        </h2>
+                        {results.playlists.length > 12 && (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="text-pink-600 hover:text-pink-700"
+                            onClick={() => setShowAllPlaylists((v) => !v)}
+                          >
+                            {showAllPlaylists ? "See less" : "See all"}
+                          </Button>
+                        )}
+                      </div>
                       <div className="flex flex-wrap justify-start gap-6">
-                        {results.playlists.slice(0, 12).map((playlist) => (
+                        {(showAllPlaylists
+                          ? results.playlists
+                          : results.playlists.slice(0, 12)
+                        ).map((playlist) => (
                           <PlaylistCard
                             key={playlist.Id}
                             item={playlist as any}
