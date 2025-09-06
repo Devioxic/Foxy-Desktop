@@ -472,6 +472,9 @@ export const MusicProvider: React.FC<MusicProviderProps> = ({ children }) => {
         const cf = crossfadeSecondsRef.current || 0;
         const maxStart = dur > 0 ? Math.max(epsilon, dur - epsilon) : cf;
         const effectiveXfade = Math.min(cf, Math.max(epsilon, maxStart));
+        // Start the overlap slightly earlier to guarantee both tracks are audible together
+        const advanceLead =
+          cf > 0 ? Math.min(0.6, Math.max(0.15, cf * 0.2)) : 0;
 
         // Debug: log once when within 1s of the crossfade window
         if (
@@ -490,56 +493,36 @@ export const MusicProvider: React.FC<MusicProviderProps> = ({ children }) => {
           );
         }
 
-        // Trigger fade-out and advance for overlap once
+        // Trigger early overlap advance once; let play() schedule both fades
         if (
           cf > 0 &&
-          !fadingOutRef.current &&
           !crossfadeAdvancedRef.current &&
           !manualAdvanceRef.current &&
           isFinite(remain) &&
-          remain <= Math.max(0.05, cf) &&
+          remain <= Math.max(0.05, cf + advanceLead) &&
           remain >= 0 &&
           isPlayingRef.current
         ) {
-          const ctx = audioCtxRef.current;
-          // Fade out the element that's actually firing this event
-          const g = el === audioA ? gainARef.current : gainBRef.current;
-          if (ctx && g) {
-            const now = ctx.currentTime;
-            const start = Math.max(0.0001, g.gain.value);
-            // If we're late (remain < crossfadeSeconds), shorten the fade to 'remain'
-            const fadeLen = Math.max(
-              0.05,
-              Math.min(cf, Math.max(0.05, remain))
-            );
-            logger.debug(
-              `XF: fade-out schedule gain=${start} dur=${fadeLen}s on=${el === audioA ? "A" : "B"}`
-            );
-            g.gain.cancelScheduledValues(now);
-            g.gain.setValueAtTime(start, now);
-            g.gain.linearRampToValueAtTime(0.0001, now + fadeLen);
-            fadingOutRef.current = true;
-            pendingFadeInRef.current = true;
-            pendingFadeDurationRef.current = fadeLen;
-            manualAdvanceRef.current = false; // allow fade on transition
-            logger.info(
-              `XF: start fade-out id=${assignedTrack?.Id} at t=${currentTime.toFixed(2)}s remain=${remain.toFixed(
-                2
-              )}s fade=${fadeLen}s`
-            );
-            // Only overlap-advance if a next track actually exists (or repeat all)
-            const qNow = queueRef.current;
-            const idxNow = currentIndexRef.current;
-            const repNow = repeatModeRef.current;
-            const hasNext =
-              idxNow < qNow.length - 1 || (repNow === "all" && qNow.length > 0);
-            if (hasNext) {
-              logger.info("XF: triggering next() for overlap");
-              crossfadeAdvancedRef.current = true; // set just before advancing
-              next();
-            } else {
-              logger.info("XF: at end of queue; skipping overlap advance");
-            }
+          // Compute intended fade length; if late, shorten to remaining time
+          const fadeLen = Math.max(0.05, Math.min(cf, Math.max(0.05, remain)));
+          pendingFadeDurationRef.current = fadeLen;
+          logger.info(
+            `XF: early advance id=${assignedTrack?.Id} t=${currentTime.toFixed(2)}s remain=${remain.toFixed(
+              2
+            )}s fade=${fadeLen}s lead=${advanceLead.toFixed(2)}s`
+          );
+          // Only overlap-advance if a next track actually exists (or repeat all)
+          const qNow = queueRef.current;
+          const idxNow = currentIndexRef.current;
+          const repNow = repeatModeRef.current;
+          const hasNext =
+            idxNow < qNow.length - 1 || (repNow === "all" && qNow.length > 0);
+          if (hasNext) {
+            logger.info("XF: triggering next() for overlap");
+            crossfadeAdvancedRef.current = true; // set just before advancing
+            next();
+          } else {
+            logger.info("XF: at end of queue; skipping overlap advance");
           }
         }
 
@@ -547,15 +530,13 @@ export const MusicProvider: React.FC<MusicProviderProps> = ({ children }) => {
         if (
           cf > 0 &&
           Number.isFinite(remain) &&
-          remain <= effectiveXfade &&
+          remain <= effectiveXfade + advanceLead &&
           remain >= 0 &&
           isPlayingRef.current &&
-          (fadingOutRef.current ||
-            crossfadeAdvancedRef.current ||
-            manualAdvanceRef.current)
+          (crossfadeAdvancedRef.current || manualAdvanceRef.current)
         ) {
           logger.debug(
-            `XF: gated remain=${remain.toFixed(2)}s fadingOut=${fadingOutRef.current} advanced=${crossfadeAdvancedRef.current} manual=${manualAdvanceRef.current}`
+            `XF: gated remain=${remain.toFixed(2)}s advanced=${crossfadeAdvancedRef.current} manual=${manualAdvanceRef.current}`
           );
         }
 
