@@ -11,8 +11,12 @@ declare const MAIN_WINDOW_VITE_NAME: string | undefined;
 
 if (process.platform === "win32") {
   try {
-    if (require("electron-squirrel-startup")) app.quit();
-  } catch {}
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const squirrel = require("electron-squirrel-startup");
+    if (squirrel) app.quit();
+  } catch {
+    // Ignore if not installed
+  }
 }
 
 const createWindow = async () => {
