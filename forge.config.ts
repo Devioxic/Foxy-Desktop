@@ -1,8 +1,6 @@
 import type { ForgeConfig } from "@electron-forge/shared-types";
 import { MakerSquirrel } from "@electron-forge/maker-squirrel";
 import { MakerDMG } from "@electron-forge/maker-dmg";
-import { MakerDeb } from "@electron-forge/maker-deb";
-import { MakerFlatpak } from "@electron-forge/maker-flatpak";
 import { VitePlugin } from "@electron-forge/plugin-vite";
 import { FusesPlugin } from "@electron-forge/plugin-fuses";
 import { FuseV1Options, FuseVersion } from "@electron/fuses";
@@ -35,16 +33,16 @@ const config: ForgeConfig = {
     new MakerDMG({
       icon: "public/icon.icns",
     }),
-    new MakerFlatpak({
-      options: {
-        files: [],
-        icon: "public/icon@0.5x.png",
-        id: "com.tillycloud.foxydesktop",
-        productName: "Foxy",
-        genericName: "Jellyfin Music Player",
-        description: "A modern desktop music player for Jellyfin",
-      },
-    }),
+    //new MakerFlatpak({
+    //  options: {
+    //    files: [],
+    //    icon: "public/icon@0.5x.png",
+    //    id: "com.tillycloud.foxydesktop",
+    //    productName: "Foxy",
+    //    genericName: "Jellyfin Music Player",
+    //    description: "A modern desktop music player for Jellyfin",
+    //  },
+    //}),
   ],
   plugins: [
     new VitePlugin({

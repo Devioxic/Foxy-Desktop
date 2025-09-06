@@ -169,7 +169,7 @@ const TrackList: React.FC<TrackListProps> = React.memo(
         <div className="space-y-1">
           {displayTracks.map((track, index) => (
             <div
-              key={track.Id}
+              key={`${track.Id ?? "idx"}-${index}`}
               className={`group flex items-center px-3 py-2 rounded-md hover:bg-gray-100 cursor-pointer transition-colors ${
                 isCurrentTrack(track.Id) ? "bg-pink-50" : ""
               }`}

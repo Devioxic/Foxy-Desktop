@@ -1021,6 +1021,66 @@ export const getArtistTracks = async (artistId: string) => {
   }
 };
 
+// Fetch all tracks for an artist (no limit, paginated)
+export const getAllTracksByArtist = async (artistId: string) => {
+  try {
+    const authData = JSON.parse(localStorage.getItem("authData") || "{}");
+    if (!authData.serverAddress || !authData.accessToken || !authData.userId) {
+      throw new Error("Authentication data not found");
+    }
+
+    const api = jellyfin.createApi(
+      authData.serverAddress,
+      authData.accessToken
+    );
+    const itemsApi = getItemsApi(api);
+
+    const pageSize = 500;
+    let startIndex = 0;
+    let total = Infinity as number;
+    let allItems: any[] = [];
+
+    while (startIndex < total) {
+      const response = await itemsApi.getItems({
+        userId: authData.userId,
+        albumArtistIds: [artistId],
+        includeItemTypes: [BaseItemKind.Audio],
+        recursive: true,
+        fields: [
+          ItemFields.PrimaryImageAspectRatio,
+          ItemFields.MediaSourceCount,
+          ItemFields.Path,
+          ItemFields.Genres,
+          ItemFields.DateCreated,
+        ],
+        sortBy: [ItemSortBy.SortName],
+        sortOrder: [SortOrder.Ascending],
+        startIndex,
+        limit: pageSize,
+        enableTotalRecordCount: true,
+      });
+
+      const batch = response.data.Items || [];
+      allItems = allItems.concat(batch);
+
+      const totalRecordCount = response.data.TotalRecordCount;
+      if (typeof totalRecordCount === "number") {
+        total = totalRecordCount;
+      } else if (batch.length < pageSize) {
+        total = startIndex + batch.length;
+      }
+
+      if (batch.length === 0) break;
+      startIndex += batch.length;
+    }
+
+    return allItems;
+  } catch (error) {
+    logger.error("Error getting all artist tracks:", error);
+    throw error;
+  }
+};
+
 export const findArtistByName = async (artistName: string) => {
   try {
     const authData = JSON.parse(localStorage.getItem("authData") || "{}");

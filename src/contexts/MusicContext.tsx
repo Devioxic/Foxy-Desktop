@@ -1,9 +1,9 @@
 import React, {
   createContext,
-  useContext,
-  useState,
   useRef,
   useEffect,
+  useState,
+  useContext,
 } from "react";
 import { logger } from "@/lib/logger";
 import {
@@ -24,15 +24,11 @@ export interface Track {
   RunTimeTicks?: number;
   MediaSources?: Array<{
     Path: string;
-    Container: string;
-    DirectStreamUrl?: string;
-    Bitrate?: number; // bits per second
     AudioCodec?: string;
     AudioChannels?: number;
     SampleRate?: number; // Hz
     BitsPerSample?: number;
     TranscodingUrl?: string;
-    IsDirectStream?: boolean;
   }>;
 }
 
@@ -173,6 +169,8 @@ export const MusicProvider: React.FC<MusicProviderProps> = ({ children }) => {
   const crossfadeAdvancedRef = useRef<boolean>(false);
   // When user explicitly skips/previous/jumps, don't crossfade — cut immediately
   const manualAdvanceRef = useRef<boolean>(false);
+  // If crossfade starts late, carry the effective fade duration to the next play()
+  const pendingFadeDurationRef = useRef<number>(0);
   const prefetchedNextIdRef = useRef<string | null>(null);
   const useARef = useRef<boolean>(true); // which element is active now
 
@@ -184,6 +182,45 @@ export const MusicProvider: React.FC<MusicProviderProps> = ({ children }) => {
   const audioA = audioARef.current;
   const audioB = audioBRef.current;
   const audio = useARef.current ? audioA : audioB;
+  // Keep track of which track is assigned to each element for accurate timing/fallbacks
+  const trackARef = useRef<Track | null>(null);
+  const trackBRef = useRef<Track | null>(null);
+  // Live state refs to avoid stale closures inside media event handlers
+  const isPlayingRef = useRef(isPlaying);
+  const crossfadeSecondsRef = useRef(crossfadeSeconds);
+  const queueRef = useRef(queue);
+  const currentIndexRef = useRef(currentIndex);
+  const repeatModeRef = useRef(repeatMode);
+  const currentTrackRef = useRef(currentTrack);
+  const serverAddressRef = useRef(serverAddress);
+  const accessTokenRef = useRef(accessToken);
+  // Monotonic token to ensure only the latest play() updates UI/state
+  const playTokenRef = useRef(0);
+
+  useEffect(() => {
+    isPlayingRef.current = isPlaying;
+  }, [isPlaying]);
+  useEffect(() => {
+    crossfadeSecondsRef.current = crossfadeSeconds;
+  }, [crossfadeSeconds]);
+  useEffect(() => {
+    queueRef.current = queue;
+  }, [queue]);
+  useEffect(() => {
+    currentIndexRef.current = currentIndex;
+  }, [currentIndex]);
+  useEffect(() => {
+    repeatModeRef.current = repeatMode;
+  }, [repeatMode]);
+  useEffect(() => {
+    currentTrackRef.current = currentTrack;
+  }, [currentTrack]);
+  useEffect(() => {
+    serverAddressRef.current = serverAddress;
+  }, [serverAddress]);
+  useEffect(() => {
+    accessTokenRef.current = accessToken;
+  }, [accessToken]);
 
   // Initialize Web Audio
   useEffect(() => {
@@ -394,92 +431,177 @@ export const MusicProvider: React.FC<MusicProviderProps> = ({ children }) => {
 
   // Audio event listeners - basic ones only (hooked on both elements)
   useEffect(() => {
-    const handleTimeUpdate = () => {
-      const el = useARef.current ? audioA : audioB;
+    const handleTimeUpdate = (e: Event) => {
+      const el =
+        (e.currentTarget as HTMLMediaElement) ||
+        (useARef.current ? audioA : audioB);
+      // Only accept updates from the active element to avoid UI flicker during overlap
+      const activeEl = useARef.current ? audioA : audioB;
+      if (el !== activeEl) return;
+      const assignedTrack =
+        el === audioA ? trackARef.current : trackBRef.current;
+
       const currentTime = el.currentTime;
       setCurrentTime(currentTime);
-      // Crossfade fade-out near the end
+
+      // Crossfade fade-out near the end and optional prefetch
       try {
         // Prefer audio.duration; fall back to track runtime if stream doesn't expose duration
         let dur = el.duration || 0;
         if (!isFinite(dur) || dur <= 0) {
-          const ticks = currentTrack?.RunTimeTicks || 0;
+          try {
+            if (el.seekable && el.seekable.length > 0) {
+              dur = el.seekable.end(el.seekable.length - 1);
+            }
+          } catch {}
+        }
+        if (!isFinite(dur) || dur <= 0) {
+          try {
+            if (el.buffered && el.buffered.length > 0) {
+              dur = el.buffered.end(el.buffered.length - 1);
+            }
+          } catch {}
+        }
+        if (!isFinite(dur) || dur <= 0) {
+          const ticks = assignedTrack?.RunTimeTicks || 0;
           if (ticks > 0) dur = ticks / 10_000_000; // Jellyfin ticks to seconds
         }
+
         const remain = dur > 0 ? dur - currentTime : Infinity;
+        const epsilon = 0.05;
+        const cf = crossfadeSecondsRef.current || 0;
+        const maxStart = dur > 0 ? Math.max(epsilon, dur - epsilon) : cf;
+        const effectiveXfade = Math.min(cf, Math.max(epsilon, maxStart));
+
+        // Debug: log once when within 1s of the crossfade window
         if (
-          crossfadeSeconds > 0 &&
+          Number.isFinite(remain) &&
+          remain <= effectiveXfade + 1 &&
+          remain >= 0 &&
+          (window as any).__xf_logged !==
+            `${assignedTrack?.Id}-${Math.floor(remain)}`
+        ) {
+          (window as any).__xf_logged =
+            `${assignedTrack?.Id}-${Math.floor(remain)}`;
+          logger.debug(
+            `XF: timeupdate id=${assignedTrack?.Id} dur=${dur.toFixed(2)}s remain=${remain.toFixed(
+              2
+            )}s cf=${cf}s eff=${effectiveXfade.toFixed(2)}s`
+          );
+        }
+
+        // Trigger fade-out and advance for overlap once
+        if (
+          cf > 0 &&
           !fadingOutRef.current &&
+          !crossfadeAdvancedRef.current &&
+          !manualAdvanceRef.current &&
           isFinite(remain) &&
-          remain <= crossfadeSeconds + 0.02 &&
-          isPlaying
+          remain <= Math.max(0.05, cf) &&
+          remain >= 0 &&
+          isPlayingRef.current
         ) {
           const ctx = audioCtxRef.current;
-          const g = useARef.current ? gainARef.current : gainBRef.current;
+          // Fade out the element that's actually firing this event
+          const g = el === audioA ? gainARef.current : gainBRef.current;
           if (ctx && g) {
             const now = ctx.currentTime;
             const start = Math.max(0.0001, g.gain.value);
+            // If we're late (remain < crossfadeSeconds), shorten the fade to 'remain'
+            const fadeLen = Math.max(
+              0.05,
+              Math.min(cf, Math.max(0.05, remain))
+            );
+            logger.debug(
+              `XF: fade-out schedule gain=${start} dur=${fadeLen}s on=${el === audioA ? "A" : "B"}`
+            );
             g.gain.cancelScheduledValues(now);
             g.gain.setValueAtTime(start, now);
-            g.gain.linearRampToValueAtTime(
-              0.0001,
-              now + Math.max(0.05, crossfadeSeconds)
-            );
+            g.gain.linearRampToValueAtTime(0.0001, now + fadeLen);
             fadingOutRef.current = true;
             pendingFadeInRef.current = true;
-          }
-        }
-
-        // If fade-out has started, advance to next track just before end to avoid a dead gap
-        // If fade window is reached and we haven't advanced, start next now for true overlap
-        if (
-          crossfadeSeconds > 0 &&
-          !crossfadeAdvancedRef.current &&
-          isFinite(remain) &&
-          remain <= crossfadeSeconds &&
-          isPlaying
-        ) {
-          crossfadeAdvancedRef.current = true;
-          next();
-        }
-      } catch {}
-
-      // Prefetch next for gapless
-      try {
-        if (queue.length > 0) {
-          const nextIdx =
-            currentIndex < queue.length - 1
-              ? currentIndex + 1
-              : repeatMode === "all"
-                ? 0
-                : -1;
-          if (nextIdx >= 0) {
-            const nextTrack = queue[nextIdx];
-            if (nextTrack && prefetchedNextIdRef.current !== nextTrack.Id) {
-              const url = getStreamUrl(nextTrack);
-              if (url) {
-                prefetchedNextIdRef.current = nextTrack.Id;
-                // Light-touch preflight to warm connection without heavy data
-                fetch(url, { method: "HEAD" }).catch(() => {});
-              }
+            pendingFadeDurationRef.current = fadeLen;
+            manualAdvanceRef.current = false; // allow fade on transition
+            logger.info(
+              `XF: start fade-out id=${assignedTrack?.Id} at t=${currentTime.toFixed(2)}s remain=${remain.toFixed(
+                2
+              )}s fade=${fadeLen}s`
+            );
+            // Only overlap-advance if a next track actually exists (or repeat all)
+            const qNow = queueRef.current;
+            const idxNow = currentIndexRef.current;
+            const repNow = repeatModeRef.current;
+            const hasNext =
+              idxNow < qNow.length - 1 || (repNow === "all" && qNow.length > 0);
+            if (hasNext) {
+              logger.info("XF: triggering next() for overlap");
+              crossfadeAdvancedRef.current = true; // set just before advancing
+              next();
+            } else {
+              logger.info("XF: at end of queue; skipping overlap advance");
             }
           }
         }
-      } catch {}
-      // Throttle progress reporting (every 5s or on near end)
-      if (currentTrack) {
-        const now = Date.now();
+
+        // If within window but didn't trigger, log gating flags (debug aid)
         if (
-          now - lastProgressReportRef.current > 5000 ||
+          cf > 0 &&
+          Number.isFinite(remain) &&
+          remain <= effectiveXfade &&
+          remain >= 0 &&
+          isPlayingRef.current &&
+          (fadingOutRef.current ||
+            crossfadeAdvancedRef.current ||
+            manualAdvanceRef.current)
+        ) {
+          logger.debug(
+            `XF: gated remain=${remain.toFixed(2)}s fadingOut=${fadingOutRef.current} advanced=${crossfadeAdvancedRef.current} manual=${manualAdvanceRef.current}`
+          );
+        }
+
+        // Prefetch next for gapless/network warmup
+        try {
+          const queueNow = queueRef.current;
+          const currentIndexNow = currentIndexRef.current;
+          const repeatNow = repeatModeRef.current;
+          if (queueNow.length > 0) {
+            const nextIdx =
+              remain <= Math.max(epsilon, effectiveXfade) &&
+              currentIndexNow < queueNow.length - 1
+                ? currentIndexNow + 1
+                : repeatNow === "all"
+                  ? 0
+                  : -1;
+            if (nextIdx >= 0) {
+              const nextTrack = queueNow[nextIdx];
+              if (nextTrack && prefetchedNextIdRef.current !== nextTrack.Id) {
+                const url = getStreamUrl(nextTrack);
+                if (url) {
+                  prefetchedNextIdRef.current = nextTrack.Id;
+                  // Light-touch preflight to warm connection without heavy data
+                  fetch(url, { method: "HEAD" }).catch(() => {});
+                }
+              }
+            }
+          }
+        } catch {}
+      } catch {}
+
+      // Throttle progress reporting (every 5s or on near end)
+      const currentTrackNow = currentTrackRef.current;
+      if (currentTrackNow) {
+        const nowMs = Date.now();
+        if (
+          nowMs - lastProgressReportRef.current > 5000 ||
           currentTime + 3 >= (el.duration || 0)
         ) {
-          lastProgressReportRef.current = now;
+          lastProgressReportRef.current = nowMs;
           reportPlaybackProgress(
-            serverAddress,
-            accessToken,
-            currentTrack.Id,
+            serverAddressRef.current,
+            accessTokenRef.current,
+            (assignedTrack?.Id || currentTrackNow?.Id) as string,
             currentTime,
-            !isPlaying,
+            !isPlayingRef.current,
             el.duration || undefined
           );
         }
@@ -503,16 +625,38 @@ export const MusicProvider: React.FC<MusicProviderProps> = ({ children }) => {
       }
     };
 
-    const handleDurationChange = () => {
-      const el = useARef.current ? audioA : audioB;
-      setDuration(el.duration);
+    const handleDurationChange = (e: Event) => {
+      const el =
+        (e.currentTarget as HTMLMediaElement) ||
+        (useARef.current ? audioA : audioB);
+      const activeEl = useARef.current ? audioA : audioB;
+      if (el !== activeEl) return;
+      let dur = el.duration;
+      if (!isFinite(dur) || dur <= 0) {
+        const ticks = currentTrack?.RunTimeTicks || 0;
+        if (ticks > 0) dur = ticks / 10_000_000; // fallback from metadata
+      }
+      setDuration(dur || 0);
     };
-    const handleLoadStart = () => setCurrentTime(0);
+    const handleLoadedMetadata = (e: Event) => handleDurationChange(e);
+    const handleLoadStart = (e?: Event) => {
+      const el =
+        (e?.currentTarget as HTMLMediaElement) ||
+        (useARef.current ? audioA : audioB);
+      const activeEl = useARef.current ? audioA : audioB;
+      if (el !== activeEl) return;
+      setCurrentTime(0);
+      // Reset duration to avoid stale UI until we know the new track's duration
+      const ticks = currentTrack?.RunTimeTicks || 0;
+      setDuration(ticks > 0 ? ticks / 10_000_000 : 0);
+    };
 
     audioA.addEventListener("timeupdate", handleTimeUpdate);
     audioB.addEventListener("timeupdate", handleTimeUpdate);
     audioA.addEventListener("durationchange", handleDurationChange);
     audioB.addEventListener("durationchange", handleDurationChange);
+    audioA.addEventListener("loadedmetadata", handleLoadedMetadata);
+    audioB.addEventListener("loadedmetadata", handleLoadedMetadata);
     audioA.addEventListener("loadstart", handleLoadStart);
     audioB.addEventListener("loadstart", handleLoadStart);
 
@@ -521,6 +665,8 @@ export const MusicProvider: React.FC<MusicProviderProps> = ({ children }) => {
       audioB.removeEventListener("timeupdate", handleTimeUpdate);
       audioA.removeEventListener("durationchange", handleDurationChange);
       audioB.removeEventListener("durationchange", handleDurationChange);
+      audioA.removeEventListener("loadedmetadata", handleLoadedMetadata);
+      audioB.removeEventListener("loadedmetadata", handleLoadedMetadata);
       audioA.removeEventListener("loadstart", handleLoadStart);
       audioB.removeEventListener("loadstart", handleLoadStart);
     };
@@ -581,14 +727,18 @@ export const MusicProvider: React.FC<MusicProviderProps> = ({ children }) => {
 
   const play = async (track?: Track) => {
     try {
+      // Bump play token; capture this call's token
+      const myToken = ++playTokenRef.current;
       let targetTrack: Track | null = null;
+      const qNow = queueRef.current;
+      const idxNow = currentIndexRef.current;
       if (track) {
-        const existingIndex = queue.findIndex((t) => t.Id === track.Id);
+        const existingIndex = qNow.findIndex((t) => t.Id === track.Id);
         if (existingIndex >= 0) {
           setCurrentIndex(existingIndex);
-          targetTrack = queue[existingIndex];
+          targetTrack = qNow[existingIndex];
         } else {
-          // append track
+          // append track (only for ad-hoc play of items not already in the queue)
           setQueue((prev) => {
             const newQ = [...prev, track];
             setCurrentIndex(newQ.length - 1);
@@ -596,17 +746,38 @@ export const MusicProvider: React.FC<MusicProviderProps> = ({ children }) => {
           });
           targetTrack = track;
         }
-      } else if (currentIndex >= 0 && currentIndex < queue.length) {
-        targetTrack = queue[currentIndex];
+      } else if (idxNow >= 0 && idxNow < qNow.length) {
+        targetTrack = qNow[idxNow];
       }
 
       if (!targetTrack) return;
+
+      // If this play is due to a manual skip, hard-stop any existing playback on both elements
+      if (manualAdvanceRef.current) {
+        try {
+          audioA.pause();
+          audioB.pause();
+        } catch {}
+        try {
+          const ctx = audioCtxRef.current;
+          const gA = gainARef.current;
+          const gB = gainBRef.current;
+          if (ctx && gA && gB) {
+            const now = ctx.currentTime;
+            gA.gain.cancelScheduledValues(now);
+            gB.gain.cancelScheduledValues(now);
+            gA.gain.setValueAtTime(0.0001, now);
+            gB.gain.setValueAtTime(0.0001, now);
+          }
+        } catch {}
+      }
 
       if (!track && audio.src && !audio.paused) {
         // toggle pause? handled elsewhere
       }
 
       const streamUrl = await resolveTrackUrl(targetTrack);
+      if (myToken !== playTokenRef.current) return; // superseded by a newer play()
       if (!streamUrl) return;
       // Choose target element (if currently A, load into B, and vice versa) for overlap
       const useA = useARef.current;
@@ -614,9 +785,12 @@ export const MusicProvider: React.FC<MusicProviderProps> = ({ children }) => {
       const targetGain = useA ? gainBRef.current : gainARef.current;
       const currentGain = useA ? gainARef.current : gainBRef.current;
       const currentEl = useA ? audioA : audioB;
+      // Capture whether this transition is manual before we reset the flag later
+      const wasManual = manualAdvanceRef.current;
       targetEl.src = streamUrl;
-      setCurrentSrc(streamUrl);
-      setCurrentTrack(targetTrack);
+      // Record which track is on which element
+      if (targetEl === audioA) trackARef.current = targetTrack;
+      if (targetEl === audioB) trackBRef.current = targetTrack;
       setIsPaused(false);
 
       // Enrich media sources async
@@ -644,50 +818,130 @@ export const MusicProvider: React.FC<MusicProviderProps> = ({ children }) => {
         const ctx = audioCtxRef.current;
         if (g && ctx) {
           const now = ctx.currentTime;
-          const manual = manualAdvanceRef.current;
-          const doFade = crossfadeSeconds > 0 && !manual;
-          const fade = Math.max(0.05, crossfadeSeconds);
+          const manual = wasManual;
+          // For manual skips, do not crossfade
+          const doFade =
+            (pendingFadeDurationRef.current > 0 || crossfadeSeconds > 0) &&
+            !manual;
+          const fade = Math.max(
+            0.05,
+            pendingFadeDurationRef.current || crossfadeSeconds
+          );
           g.gain.cancelScheduledValues(now);
-          g.gain.setValueAtTime(doFade ? 0.0001 : volume, now);
-          if (doFade) g.gain.linearRampToValueAtTime(volume, now + fade);
-          if (isPlaying && currentGain) {
-            currentGain.gain.cancelScheduledValues(now);
-            currentGain.gain.setValueAtTime(
-              Math.max(0.0001, currentGain.gain.value),
-              now
+          if (doFade && currentGain) {
+            // Equal-power crossfade for better perceived overlap
+            const currentStart = Math.max(0.0001, currentGain.gain.value);
+            const sampleCount = Math.max(
+              128,
+              Math.min(2048, Math.floor(fade * 256))
             );
-            if (doFade) {
-              currentGain.gain.linearRampToValueAtTime(0.0001, now + fade);
-              // After fade completes, pause the previous element to avoid both playing
-              setTimeout(
-                () => {
-                  try {
-                    currentEl.pause();
-                  } catch {}
-                },
-                Math.ceil(fade * 1000) + 50
-              );
-            } else {
-              // Manual or no-crossfade: silence and pause immediately
+            const curveIn = new Float32Array(sampleCount);
+            const curveOut = new Float32Array(sampleCount);
+            for (let i = 0; i < sampleCount; i++) {
+              const t = i / (sampleCount - 1);
+              const theta = (Math.PI / 2) * t;
+              // In: sin curve 0->1, Out: cos curve 1->0
+              const sinV = Math.sin(theta);
+              const cosV = Math.cos(theta);
+              curveIn[i] = Math.max(0.0001, sinV);
+              curveOut[i] = Math.max(0.0001, cosV * currentStart);
+            }
+            // Small lead so the new track is audible just before the old fades
+            const lead = Math.min(0.1, Math.max(0, fade * 0.1));
+            // Schedule target fade-in
+            g.gain.setValueCurveAtTime(curveIn, now, fade);
+            // Schedule current fade-out with slight delay for perceived overlap
+            currentGain.gain.cancelScheduledValues(now);
+            currentGain.gain.setValueAtTime(currentStart, now);
+            currentGain.gain.setValueCurveAtTime(
+              curveOut,
+              now + lead,
+              Math.max(0.05, fade - lead)
+            );
+            logger.info(
+              `XF: equal-power crossfade on=${targetEl === audioA ? "A" : "B"} dur=${fade}s lead=${lead.toFixed(2)}s`
+            );
+          } else {
+            // Manual or no-crossfade: snap to new track
+            g.gain.setValueAtTime(1, now);
+            if (isPlaying && currentGain) {
+              currentGain.gain.cancelScheduledValues(now);
               currentGain.gain.setValueAtTime(0.0001, now);
               try {
                 currentEl.pause();
+              } catch {}
+              try {
+                currentEl.currentTime = 0;
               } catch {}
             }
           }
         }
       } catch {}
+      // Reset pending fade length after applying
+      pendingFadeDurationRef.current = 0;
       // Reset manual flag after preparing transition
       manualAdvanceRef.current = false;
-      crossfadeAdvancedRef.current = false;
       try {
         audioCtxRef.current?.resume();
       } catch {}
-      await targetEl.play();
+      try {
+        await targetEl.play();
+      } catch (err) {
+        logger.warn(
+          "targetEl.play() failed; resuming audio context and retrying",
+          err
+        );
+        try {
+          await audioCtxRef.current?.resume();
+        } catch {}
+        try {
+          await targetEl.play();
+        } catch (err2) {
+          logger.error("targetEl.play() retry failed", err2);
+        }
+      }
+      if (myToken !== playTokenRef.current) return; // superseded while starting
       // Switch active element after starting
       useARef.current = !useA;
-      setIsPlaying(true);
-      reportPlaybackStart(serverAddress, accessToken, targetTrack.Id, 0);
+      // Now that the new element is active and playing, update Now Playing
+      if (myToken === playTokenRef.current) {
+        setCurrentSrc(streamUrl);
+        setCurrentTrack(targetTrack);
+      }
+      // For manual transitions, proactively pause the other element; preserve overlap for crossfade
+      if (wasManual) {
+        try {
+          const otherEl = useARef.current ? audioB : audioA;
+          otherEl.pause();
+        } catch {}
+      }
+      // Ensure UI duration resets correctly for the new track
+      try {
+        let dur = targetEl.duration || 0;
+        if (!isFinite(dur) || dur <= 0) {
+          const ticks = targetTrack?.RunTimeTicks || 0;
+          if (ticks > 0) dur = ticks / 10_000_000;
+        }
+        if (myToken === playTokenRef.current) {
+          setDuration(dur || 0);
+          setCurrentTime(0);
+        }
+        // If metadata isn't loaded yet, update again when it arrives
+        if (!isFinite(targetEl.duration) || targetEl.duration <= 0) {
+          const onMeta = () => {
+            // Only apply if this element is still active
+            const activeEl = useARef.current ? audioA : audioB;
+            if (activeEl === targetEl && myToken === playTokenRef.current) {
+              setDuration(targetEl.duration || dur || 0);
+            }
+          };
+          targetEl.addEventListener("loadedmetadata", onMeta, { once: true });
+        }
+      } catch {}
+      if (myToken === playTokenRef.current) {
+        setIsPlaying(true);
+        reportPlaybackStart(serverAddress, accessToken, targetTrack.Id, 0);
+      }
       if ("mediaSession" in navigator) {
         navigator.mediaSession.playbackState = "playing";
       }
@@ -780,24 +1034,47 @@ export const MusicProvider: React.FC<MusicProviderProps> = ({ children }) => {
   };
 
   const next = () => {
-    // Only mark manual when not triggered by the crossfade window
+    // If this next() comes from crossfade, don't mark manual or clear flags
     if (!crossfadeAdvancedRef.current) {
+      // Manual skip should not crossfade; clear any crossfade state
       manualAdvanceRef.current = true;
+      crossfadeAdvancedRef.current = false;
+      fadingOutRef.current = false;
+      pendingFadeInRef.current = false;
+      pendingFadeDurationRef.current = 0;
+    } else {
+      // Keep manual=false and preserve pendingFadeDuration for the fade-in
+      manualAdvanceRef.current = false;
     }
-    if (repeatMode === "one") {
-      if (currentIndex >= 0) {
-        play(queue[currentIndex]);
+    const q = queueRef.current;
+    const idx = currentIndexRef.current;
+    const rep = repeatModeRef.current;
+    if (rep === "one") {
+      if (idx >= 0 && idx < q.length) {
+        play(q[idx]);
       }
       return;
     }
-    if (currentIndex < queue.length - 1) {
-      setCurrentIndex((i) => i + 1);
-      const nextTrack = queue[currentIndex + 1];
-      if (nextTrack) play(nextTrack);
+    if (idx < q.length - 1) {
+      const nextIdx = idx + 1;
+      const nextTrack = q[nextIdx];
+      if (nextTrack) {
+        currentIndexRef.current = nextIdx; // keep refs in sync for rapid skips
+        setCurrentIndex(nextIdx);
+        play(nextTrack);
+      }
     } else {
-      if (repeatMode === "all" && queue.length > 0) {
+      if (rep === "all" && q.length > 0) {
+        // Wrap to first; on manual skips pause immediately, but during crossfade preserve overlap
+        if (!crossfadeAdvancedRef.current) {
+          try {
+            audioA.pause();
+            audioB.pause();
+          } catch {}
+        }
+        currentIndexRef.current = 0;
         setCurrentIndex(0);
-        play(queue[0]);
+        play(q[0]);
       } else {
         setIsPlaying(false);
         setIsPaused(false);
@@ -807,6 +1084,10 @@ export const MusicProvider: React.FC<MusicProviderProps> = ({ children }) => {
 
   const previous = () => {
     manualAdvanceRef.current = true;
+    crossfadeAdvancedRef.current = false;
+    fadingOutRef.current = false;
+    pendingFadeInRef.current = false;
+    pendingFadeDurationRef.current = 0;
     const elActive = useARef.current ? audioA : audioB;
     if (elActive.currentTime > 3 && currentIndex >= 0) {
       elActive.currentTime = 0;
@@ -814,11 +1095,20 @@ export const MusicProvider: React.FC<MusicProviderProps> = ({ children }) => {
       return;
     }
     if (currentIndex > 0) {
-      setCurrentIndex((i) => i - 1);
-      play(queue[currentIndex - 1]);
+      const newIdx = currentIndex - 1;
+      currentIndexRef.current = newIdx;
+      setCurrentIndex(newIdx);
+      play(queue[newIdx]);
     } else if (repeatMode === "all" && queue.length > 0) {
-      setCurrentIndex(queue.length - 1);
-      play(queue[queue.length - 1]);
+      // Wrap to last; stop any current element immediately
+      try {
+        audioA.pause();
+        audioB.pause();
+      } catch {}
+      const newIdx = queue.length - 1;
+      currentIndexRef.current = newIdx;
+      setCurrentIndex(newIdx);
+      play(queue[newIdx]);
     } else if (currentIndex === 0) {
       const el = useARef.current ? audioA : audioB;
       el.currentTime = 0;
@@ -828,14 +1118,17 @@ export const MusicProvider: React.FC<MusicProviderProps> = ({ children }) => {
 
   const seek = (time: number) => {
     const el = useARef.current ? audioA : audioB;
-    el.currentTime = time;
-    setCurrentTime(time);
+    const dur =
+      isFinite(el.duration) && el.duration > 0 ? el.duration : duration || 0;
+    const clamped = Math.max(0, Math.min(dur > 0 ? dur - 0.05 : time, time));
+    el.currentTime = clamped;
+    setCurrentTime(clamped);
     if (currentTrack) {
       reportPlaybackProgress(
         serverAddress,
         accessToken,
         currentTrack.Id,
-        time,
+        clamped,
         !isPlaying,
         duration
       );
@@ -924,6 +1217,10 @@ export const MusicProvider: React.FC<MusicProviderProps> = ({ children }) => {
         return [track];
       }
       const insertPos = currentIndex + 1;
+      // If the next item is the same track (by Id), don't insert a duplicate
+      if (prev[insertPos] && prev[insertPos].Id === track.Id) {
+        return prev;
+      }
       const newQ = [
         ...prev.slice(0, insertPos),
         track,
@@ -936,15 +1233,17 @@ export const MusicProvider: React.FC<MusicProviderProps> = ({ children }) => {
   const playNow = (track: Track) => {
     crossfadeAdvancedRef.current = false;
     manualAdvanceRef.current = true;
-    const idx = queue.findIndex((t) => t.Id === track.Id);
+    const qNow = queueRef.current;
+    const idx = qNow.findIndex((t) => t.Id === track.Id);
     if (idx >= 0) {
       setCurrentIndex(idx);
       play(track);
     } else {
       setQueue((prev) => {
         const newQ = [...prev];
-        newQ.splice(currentIndex + 1, 0, track);
-        setCurrentIndex(currentIndex + 1);
+        const ins = (currentIndexRef.current ?? -1) + 1;
+        newQ.splice(ins, 0, track);
+        setCurrentIndex(ins);
         return newQ;
       });
       play(track);
@@ -966,18 +1265,33 @@ export const MusicProvider: React.FC<MusicProviderProps> = ({ children }) => {
         setCurrentSrc(streamUrl);
         setCurrentTrack(first);
         setIsPaused(false);
+        // Record which track is on which element for accurate fallback timing
+        if (useARef.current) {
+          trackARef.current = first;
+        } else {
+          trackBRef.current = first;
+        }
+        // Initialize duration with a metadata fallback to prevent stale previous value
+        try {
+          let dur = audio.duration;
+          if (!isFinite(dur) || dur <= 0) {
+            const ticks = first?.RunTimeTicks || 0;
+            if (ticks > 0) dur = ticks / 10_000_000;
+          }
+          setDuration(dur || 0);
+        } catch {}
         // Prepare fade-in on the active element's stream gain, not master
         try {
           const ctx = audioCtxRef.current;
           const g = useARef.current ? gainARef.current : gainBRef.current;
           if (g && ctx) {
             const now = ctx.currentTime;
-            const start = crossfadeSeconds > 0 ? 0.0001 : volume;
+            const start = crossfadeSeconds > 0 ? 0.0001 : 1;
             g.gain.cancelScheduledValues(now);
             g.gain.setValueAtTime(start, now);
             if (crossfadeSeconds > 0) {
               g.gain.linearRampToValueAtTime(
-                volume,
+                1,
                 now + Math.max(0.05, crossfadeSeconds)
               );
             }
@@ -1103,26 +1417,38 @@ export const MusicProvider: React.FC<MusicProviderProps> = ({ children }) => {
 
   // Handle audio ended event (advance or stop)
   useEffect(() => {
-    const handleEnded = () => {
-      setIsPlaying(false);
-      setIsPaused(false);
+    const handleEnded = (e: Event) => {
+      const el =
+        (e.currentTarget as HTMLMediaElement) ||
+        (useARef.current ? audioA : audioB);
+      const endedTrack = el === audioA ? trackARef.current : trackBRef.current;
       if (crossfadeAdvancedRef.current) {
-        // We already advanced early for crossfade; just reset flags
-      } else if (repeatMode === "one") {
-        if (currentIndex >= 0) play(queue[currentIndex]);
+        // Already advanced for crossfade; don't flip play state
       } else {
-        next();
+        setIsPlaying(false);
+        setIsPaused(false);
+        setDuration(0);
+      }
+      if (!crossfadeAdvancedRef.current) {
+        const rep = repeatModeRef.current;
+        const idx = currentIndexRef.current;
+        const q = queueRef.current;
+        if (rep === "one") {
+          if (idx >= 0 && idx < q.length) play(q[idx]);
+        } else {
+          next();
+        }
       }
       // No master fade-in here; per-stream gains handle it
       fadingOutRef.current = false;
       pendingFadeInRef.current = false;
       crossfadeAdvancedRef.current = false;
-      if (currentTrack) {
+      if (endedTrack) {
         reportPlaybackStopped(
           serverAddress,
           accessToken,
-          currentTrack.Id,
-          (useARef.current ? audioA : audioB).currentTime
+          endedTrack.Id,
+          el.duration || el.currentTime
         );
       }
     };
@@ -1173,23 +1499,6 @@ export const MusicProvider: React.FC<MusicProviderProps> = ({ children }) => {
         const skipTime = details.seekOffset || 10;
         seek(Math.min(duration, currentTime + skipTime));
       });
-
-      // Try to set experimental shuffle/repeat actions if they exist
-      try {
-        // @ts-ignore - These are experimental APIs that may not be in all browsers
-        if ("setActionHandler" in navigator.mediaSession) {
-          // @ts-ignore
-          navigator.mediaSession.setActionHandler("shuffle", () => {
-            toggleShuffle();
-          });
-          // @ts-ignore
-          navigator.mediaSession.setActionHandler("repeat", () => {
-            toggleRepeat();
-          });
-        }
-      } catch (error) {
-        logger.debug("Experimental shuffle/repeat actions not supported");
-      }
     }
   }, [
     isPlaying,

@@ -14,6 +14,7 @@ import {
   getArtistInfo,
   getArtistAlbums,
   getArtistTracks,
+  getAllTracksByArtist,
   findArtistByName,
 } from "@/lib/jellyfin";
 import { BaseItemDto } from "@jellyfin/sdk/lib/generated-client/models";
@@ -112,16 +113,28 @@ const ArtistView = () => {
     return getImageUrl(item, authData.serverAddress!, size, "/placeholder.svg");
   };
 
-  const handlePlayTopTracks = () => {
-    if (tracks.length > 0) {
-      playQueue(tracks as any, 0);
+  const handlePlayAllTracks = async () => {
+    if (!artistId) return;
+    try {
+      const all = await getAllTracksByArtist(artistId);
+      if (all && all.length) {
+        playQueue(all as any, 0);
+      }
+    } catch (e) {
+      logger.error("Failed to play all tracks for artist", e);
     }
   };
 
-  const handleShuffleTopTracks = () => {
-    if (tracks.length > 0) {
-      const shuffledTracks = [...tracks].sort(() => Math.random() - 0.5);
-      playQueue(shuffledTracks as any, 0);
+  const handleShuffleAllTracks = async () => {
+    if (!artistId) return;
+    try {
+      const all = await getAllTracksByArtist(artistId);
+      if (all && all.length) {
+        const shuffledTracks = [...all].sort(() => Math.random() - 0.5);
+        playQueue(shuffledTracks as any, 0);
+      }
+    } catch (e) {
+      logger.error("Failed to shuffle all tracks for artist", e);
     }
   };
 
@@ -243,7 +256,7 @@ const ArtistView = () => {
               )}
               <div className="flex items-center space-x-4 pt-4">
                 <Button
-                  onClick={handlePlayTopTracks}
+                  onClick={handlePlayAllTracks}
                   className="bg-pink-600 hover:bg-pink-700 px-8"
                 >
                   <Play className="w-5 h-5 mr-2" />
@@ -251,7 +264,7 @@ const ArtistView = () => {
                 </Button>
                 <Button
                   variant="outline"
-                  onClick={handleShuffleTopTracks}
+                  onClick={handleShuffleAllTracks}
                   className="px-6"
                 >
                   <Shuffle className="w-5 h-5 mr-2" />

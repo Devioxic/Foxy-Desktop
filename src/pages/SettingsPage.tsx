@@ -405,8 +405,7 @@ function PlaybackSettingsPanel() {
         </div>
       </div>
       <p className="text-[11px] text-gray-500 leading-relaxed">
-        Changes apply instantly. Crossfade uses smooth gain ramps; seamless
-        transitions are always on.
+        Changes apply instantly.
       </p>
     </div>
   );
