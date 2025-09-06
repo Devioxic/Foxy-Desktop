@@ -28,10 +28,13 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { useMusicPlayer } from "@/contexts/MusicContext";
+import { useToast } from "@/hooks/use-toast";
+import { clearAllDownloads } from "@/lib/downloads";
 
 export default function SettingsPage() {
   const navigate = useNavigate();
   const { authData, clearAuthData } = useAuthData();
+  const { toast } = useToast();
   const [useLocalFirst, setUseLocalFirst] = useState<boolean>(() => {
     const stored = localStorage.getItem("useLocalFirst");
     return stored ? stored === "true" : true;
@@ -175,6 +178,45 @@ export default function SettingsPage() {
                       checked={autoSync}
                       onCheckedChange={(v) => setAutoSync(!!v)}
                     />
+                  </div>
+                  <Separator />
+
+                  <div className="flex items-center justify-between">
+                    <div className="space-y-1">
+                      <div className="text-sm font-medium">
+                        Clear All Downloads
+                      </div>
+                      <div className="text-xs text-gray-600">
+                        Remove all downloaded media files and cached flags. This
+                        cannot be undone.
+                      </div>
+                    </div>
+                    <Button
+                      variant="destructive"
+                      size="sm"
+                      onClick={async () => {
+                        const ok = window.confirm(
+                          "This will remove all downloaded songs and downloaded collections. Continue?"
+                        );
+                        if (!ok) return;
+                        try {
+                          const res = await clearAllDownloads();
+                          toast({
+                            title: "Downloads cleared",
+                            description: res
+                              ? `${res.removed} files removed`
+                              : "Done",
+                          });
+                        } catch (e) {
+                          toast({
+                            title: "Failed to clear downloads",
+                            description: String(e),
+                          });
+                        }
+                      }}
+                    >
+                      Clear
+                    </Button>
                   </div>
                 </CardContent>
               </Card>
@@ -340,7 +382,8 @@ function PlaybackSettingsPanel() {
         <div className="space-y-0.5">
           <div className="text-sm font-medium">Normalize Volume</div>
           <div className="text-xs text-gray-500">
-            Reduce loudness differences (placeholder)
+            Level songs using ReplayGain/R128 when available; falls back to
+            gentle compression.
           </div>
         </div>
         <Switch
@@ -363,8 +406,7 @@ function PlaybackSettingsPanel() {
         </div>
       </div>
       <p className="text-[11px] text-gray-500 leading-relaxed">
-        Changes apply instantly. Crossfade uses smooth gain ramps; seamless
-        transitions are always on.
+        Changes apply instantly.
       </p>
     </div>
   );

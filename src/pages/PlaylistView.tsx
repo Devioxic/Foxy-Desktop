@@ -4,13 +4,6 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import LoadingSkeleton from "@/components/LoadingSkeleton";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
 import { logger } from "@/lib/logger";
 import AddToPlaylistDialog from "@/components/AddToPlaylistDialog";
 import MusicPlayer from "@/components/MusicPlayer";
@@ -24,7 +17,6 @@ import {
   Play,
   Pause,
   Star,
-  MoreVertical,
   ArrowLeft,
   Music,
   Shuffle,
@@ -33,7 +25,23 @@ import {
   ListPlus,
   ListMusic,
   X,
+  Download,
+  MoreVertical,
+  SkipForward,
+  Trash2,
+  ListMusic as QueueIcon,
 } from "lucide-react";
+import {
+  isCollectionDownloaded,
+  downloadPlaylistById,
+  removePlaylistDownloads,
+} from "@/lib/downloads";
+import {
+  showLoading,
+  dismissToast,
+  showSuccess,
+  showError,
+} from "@/utils/toast";
 import {
   getPlaylistItems,
   getPlaylistInfo,
@@ -47,7 +55,16 @@ import {
 } from "@/lib/jellyfin";
 import { BaseItemDto } from "@jellyfin/sdk/lib/generated-client/models";
 import { useAuthData } from "@/hooks/useAuthData";
-import IconDropdown from "@/components/IconDropdown";
+import { Dropdown } from "@/components/Dropdown";
+import {
+  Dialog,
+  DialogTrigger,
+  DialogContent,
+  DialogHeader,
+  DialogFooter,
+  DialogTitle,
+  DialogDescription,
+} from "@/components/ui/dialog";
 
 interface Track extends BaseItemDto {
   AlbumArtist?: string;
@@ -68,8 +85,15 @@ const PlaylistView = () => {
   const { playlistId } = useParams<{ playlistId: string }>();
   const navigate = useNavigate();
   const { authData, isAuthenticated } = useAuthData();
-  const { currentTrack, isPlaying, playNow, addToQueue, playQueue, queue } =
-    useMusicPlayer();
+  const {
+    currentTrack,
+    isPlaying,
+    playNow,
+    addToQueue,
+    playQueue,
+    queue,
+    addToQueueNext,
+  } = useMusicPlayer();
   const [searchParams] = useSearchParams();
 
   const [playlistInfo, setPlaylistInfo] = useState<PlaylistInfo | null>(null);
@@ -85,6 +109,10 @@ const PlaylistView = () => {
     Record<string, boolean>
   >({});
   const [showLyrics, setShowLyrics] = useState(false);
+  const [isDownloaded, setIsDownloaded] = useState(false);
+  const [downloading, setDownloading] = useState(false);
+  const [dropdownOpen, setDropdownOpen] = useState(false);
+  const [deleteOpen, setDeleteOpen] = useState(false);
 
   const handleLyricsToggle = (show: boolean) => {
     setShowLyrics(show);
@@ -119,6 +147,12 @@ const PlaylistView = () => {
 
       setPlaylistInfo(info);
       setTracks(items as Track[]);
+      if (playlistId) {
+        try {
+          const dl = await isCollectionDownloaded(playlistId);
+          setIsDownloaded(dl);
+        } catch {}
+      }
 
       // Check if playlist is favorited
       try {
@@ -171,6 +205,33 @@ const PlaylistView = () => {
     }
   };
 
+  const handleToggleDownload = async () => {
+    if (!playlistId) return;
+    if (downloading) return;
+    setDownloading(true);
+    const id = showLoading(
+      isDownloaded ? "Removing downloads..." : "Downloading playlist..."
+    );
+    try {
+      if (isDownloaded) {
+        await removePlaylistDownloads(playlistId);
+        setIsDownloaded(false);
+        showSuccess("Removed playlist downloads");
+      } else {
+        const res = await downloadPlaylistById(playlistId, playlistInfo?.Name);
+        setIsDownloaded(true);
+        showSuccess(
+          `Downloaded ${res.downloaded} tracks${res.failed ? `, ${res.failed} failed` : ""}`
+        );
+      }
+    } catch (e: any) {
+      showError(e?.message || "Download failed");
+    } finally {
+      dismissToast(id as any);
+      setDownloading(false);
+    }
+  };
+
   const convertToMusicTrack = (track: Track): MusicTrack => ({
     Id: track.Id!,
     Name: track.Name || "Unknown Track",
@@ -218,6 +279,41 @@ const PlaylistView = () => {
       const trackToAdd = convertToMusicTrack(track);
       addToQueue(trackToAdd);
     });
+  };
+
+  const handlePlayNextAll = () => {
+    // Insert all playlist tracks after current track preserving order
+    // If nothing playing, behave like Play All
+    if (!tracks.length) return;
+    if (!currentTrack) {
+      handlePlayAll();
+      return;
+    }
+    tracks.forEach((t) => {
+      addToQueueNext(convertToMusicTrack(t));
+    });
+  };
+
+  const handleConfirmDelete = async () => {
+    if (!playlistInfo?.Id) return;
+    try {
+      await deletePlaylist(playlistInfo.Id);
+      try {
+        const { localDb } = await import("@/lib/database");
+        await localDb.initialize();
+        await localDb.deletePlaylist(playlistInfo.Id);
+        window.dispatchEvent(new CustomEvent("syncUpdate"));
+      } catch (cacheErr) {
+        logger.warn("Failed updating local cache after delete", cacheErr);
+      }
+      showSuccess("Playlist deleted");
+      navigate(-1);
+    } catch (err: any) {
+      logger.error("Failed to delete playlist", err);
+      showError(err?.message || "Failed to delete playlist");
+    } finally {
+      setDeleteOpen(false);
+    }
   };
 
   const handleToggleFavorite = async () => {
@@ -303,6 +399,19 @@ const PlaylistView = () => {
       );
     }
   };
+
+  useEffect(() => {
+    const onRemoved = (e: any) => {
+      if (!playlistId) return;
+      try {
+        const { playlistId: pid } = (e as CustomEvent).detail || {};
+        if (pid === playlistId) loadPlaylistData();
+      } catch {}
+    };
+    window.addEventListener("playlistItemRemoved", onRemoved as any);
+    return () =>
+      window.removeEventListener("playlistItemRemoved", onRemoved as any);
+  }, [playlistId]);
 
   if (loading) {
     return (
@@ -420,60 +529,94 @@ const PlaylistView = () => {
                 <Shuffle className="w-4 h-4 mr-2" />
                 Shuffle
               </Button>
-              <IconDropdown
-                align="start"
-                tooltip="More actions"
-                menuWidthClass="w-52"
-              >
-                <DropdownMenuItem
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    if (tracks.length === 0) return;
-                    handleAddAllToQueue();
-                  }}
-                  disabled={tracks.length === 0}
-                  className="cursor-pointer"
-                >
-                  <Plus className="w-4 h-4 mr-2" />
-                  Add all to queue
-                </DropdownMenuItem>
-                <DropdownMenuSeparator />
-                <DropdownMenuItem
-                  onClick={async (e) => {
-                    e.stopPropagation();
-                    if (!playlistInfo?.Id) return;
-                    if (
-                      !confirm("Delete this playlist? This cannot be undone.")
-                    )
-                      return;
-                    try {
-                      await deletePlaylist(playlistInfo.Id);
-                      // Remove from local cache so Playlists page updates instantly
-                      try {
-                        const { localDb } = await import("@/lib/database");
-                        await localDb.initialize();
-                        await localDb.deletePlaylist(playlistInfo.Id);
-                        // Notify any listeners to refresh
-                        window.dispatchEvent(new CustomEvent("syncUpdate"));
-                      } catch (cacheErr) {
-                        logger.warn(
-                          "Failed updating local cache after delete",
-                          cacheErr
-                        );
+              {/* Playlist actions dropdown */}
+              <Dropdown
+                open={dropdownOpen}
+                onOpenChange={setDropdownOpen}
+                trigger={
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="p-1 text-gray-600 hover:text-pink-600 hover:bg-gray-100"
+                    onClick={(e) => e.stopPropagation()}
+                    aria-label="Playlist options"
+                  >
+                    <MoreVertical className="w-4 h-4" />
+                  </Button>
+                }
+                actions={[
+                  {
+                    id: "download",
+                    label: isDownloaded ? "Remove download" : "Download",
+                    icon: downloading ? (
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                    ) : (
+                      <Download
+                        className={`w-4 h-4 ${isDownloaded ? "text-pink-600" : ""}`}
+                      />
+                    ),
+                    onSelect: () => handleToggleDownload(),
+                    disabled: downloading,
+                  },
+                  {
+                    id: "add-all",
+                    label: "Add all to queue",
+                    icon: <QueueIcon className="w-4 h-4" />,
+                    onSelect: handleAddAllToQueue,
+                    disabled: tracks.length === 0,
+                  },
+                  {
+                    id: "play-next",
+                    label: "Play next",
+                    icon: <SkipForward className="w-4 h-4" />,
+                    onSelect: handlePlayNextAll,
+                    disabled: tracks.length === 0,
+                  },
+                  playlistInfo?.Id
+                    ? ({ separator: true, id: "sep" } as any)
+                    : ({} as any),
+                  playlistInfo?.Id
+                    ? {
+                        id: "delete",
+                        label: "Delete",
+                        destructive: true,
+                        icon: <Trash2 className="w-4 h-4" />,
+                        onSelect: () => setDeleteOpen(true),
                       }
-                      // Navigate back to playlists
-                      navigate(-1);
-                    } catch (err) {
-                      logger.error("Failed to delete playlist", err);
-                      alert("Failed to delete playlist");
-                    }
-                  }}
-                  className="cursor-pointer text-red-600 focus:text-red-700"
-                >
-                  <X className="w-4 h-4 mr-2" />
-                  Delete playlist
-                </DropdownMenuItem>
-              </IconDropdown>
+                    : ({} as any),
+                ].filter((a) => (a as any).label || (a as any).separator)}
+              />
+              <Dialog open={deleteOpen} onOpenChange={setDeleteOpen}>
+                <DialogContent>
+                  <DialogHeader>
+                    <DialogTitle>Delete playlist?</DialogTitle>
+                    <DialogDescription>
+                      This action cannot be undone. This will permanently delete
+                      the playlist.
+                    </DialogDescription>
+                  </DialogHeader>
+                  <DialogFooter>
+                    <Button
+                      variant="outline"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setDeleteOpen(false);
+                      }}
+                    >
+                      Cancel
+                    </Button>
+                    <Button
+                      variant="destructive"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleConfirmDelete();
+                      }}
+                    >
+                      Delete
+                    </Button>
+                  </DialogFooter>
+                </DialogContent>
+              </Dialog>
             </div>
           </div>
         </div>
@@ -501,6 +644,7 @@ const PlaylistView = () => {
                 showArtistFromTrack={true}
                 formatDuration={formatDuration}
                 usePlaylistIndex
+                playlistId={playlistId!}
               />
             </div>
           </div>

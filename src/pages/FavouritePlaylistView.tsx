@@ -19,6 +19,8 @@ import {
   Plus,
   Heart,
   ListMusic,
+  Loader2,
+  Download,
 } from "lucide-react";
 import {
   getFavorites,
@@ -55,6 +57,8 @@ const FavouritePlaylistView = () => {
     Record<string, boolean>
   >({});
   const [showLyrics, setShowLyrics] = useState(false);
+  const [isDownloaded, setIsDownloaded] = useState(false);
+  const [downloading, setDownloading] = useState(false);
 
   const handleLyricsToggle = (show: boolean) => {
     setShowLyrics(show);
@@ -62,6 +66,14 @@ const FavouritePlaylistView = () => {
 
   useEffect(() => {
     loadFavoriteTracks();
+    // Probe favourite collection download state
+    (async () => {
+      try {
+        const { isCollectionDownloaded } = await import("@/lib/downloads");
+        const state = await isCollectionDownloaded("favourites");
+        setIsDownloaded(state);
+      } catch {}
+    })();
   }, []);
 
   const loadFavoriteTracks = async () => {
@@ -127,6 +139,26 @@ const FavouritePlaylistView = () => {
       const shuffledTracks = [...tracks].sort(() => Math.random() - 0.5);
       const tracksToPlay = shuffledTracks.map(convertToMusicTrack);
       playQueue(tracksToPlay, 0);
+    }
+  };
+
+  const handleToggleDownload = async () => {
+    try {
+      setDownloading(true);
+      const { downloadFavourites, removeFavouritesDownloads } = await import(
+        "@/lib/downloads"
+      );
+      if (isDownloaded) {
+        await removeFavouritesDownloads();
+        setIsDownloaded(false);
+      } else {
+        await downloadFavourites("Favourites");
+        setIsDownloaded(true);
+      }
+    } catch (e) {
+      logger.error("Failed to toggle favourites download", e);
+    } finally {
+      setDownloading(false);
     }
   };
 
@@ -258,6 +290,24 @@ const FavouritePlaylistView = () => {
               >
                 <Shuffle className="w-4 h-4 mr-2" />
                 Shuffle
+              </Button>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={handleToggleDownload}
+                disabled={downloading}
+                className="p-1 text-gray-600 hover:text-pink-600 hover:bg-gray-100"
+                title={isDownloaded ? "Remove download" : "Download"}
+              >
+                {downloading ? (
+                  <Loader2 className="w-4 h-4 animate-spin text-gray-400" />
+                ) : (
+                  <Download
+                    className={`w-4 h-4 ${
+                      isDownloaded ? "text-pink-600" : "text-gray-600"
+                    }`}
+                  />
+                )}
               </Button>
             </div>
           </div>

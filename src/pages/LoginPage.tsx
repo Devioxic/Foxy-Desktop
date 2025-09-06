@@ -35,6 +35,14 @@ const LoginPage = () => {
         try {
           clearQueue();
         } catch {}
+
+        // Also clear cached sidebar/profile/sync state to avoid cross-server leakage
+        try {
+          localStorage.removeItem("userProfile.cache");
+          localStorage.removeItem("serverInfo.cache");
+          localStorage.removeItem("syncStatus.cache");
+          localStorage.removeItem("syncStatus.last");
+        } catch {}
       }
     } catch {}
   };
@@ -269,7 +277,7 @@ const LoginPage = () => {
         </div>
 
         <div className="mt-8 text-center text-pink-600/70 text-sm">
-          <p>Foxy Desktop v1.0.0.rc3</p>
+          <p>Foxy Desktop v1.0.0</p>
         </div>
       </div>
     </div>

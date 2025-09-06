@@ -24,6 +24,8 @@ const Library = React.lazy(() => import("@/pages/Library"));
 const Artists = React.lazy(() => import("@/pages/Artists"));
 const Albums = React.lazy(() => import("@/pages/Albums"));
 const Playlists = React.lazy(() => import("@/pages/Playlists"));
+const Downloads = React.lazy(() => import("./pages/Downloads"));
+const DownloadedSongs = React.lazy(() => import("./pages/DownloadedSongs"));
 const AlbumView = React.lazy(() => import("@/pages/AlbumView"));
 const ArtistView = React.lazy(() => import("@/pages/ArtistView"));
 const PlaylistView = React.lazy(() => import("@/pages/PlaylistView"));
@@ -167,6 +169,30 @@ const AppContent = () => {
                 }
               >
                 <Playlists />
+              </Suspense>
+            }
+          />
+          <Route
+            path="/downloads"
+            element={
+              <Suspense
+                fallback={
+                  <LayoutFallback activeSection="downloads" type="library" />
+                }
+              >
+                <Downloads />
+              </Suspense>
+            }
+          />
+          <Route
+            path="/downloads/songs"
+            element={
+              <Suspense
+                fallback={
+                  <LayoutFallback activeSection="downloads" type="library" />
+                }
+              >
+                <DownloadedSongs />
               </Suspense>
             }
           />

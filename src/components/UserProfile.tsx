@@ -9,8 +9,22 @@ import SyncStatusIndicator from "@/components/SyncStatusIndicator";
 
 const UserProfile = () => {
   const navigate = useNavigate();
-  const [currentUser, setCurrentUser] = useState<any>(null);
-  const [serverInfo, setServerInfo] = useState<any>(null);
+  const [currentUser, setCurrentUser] = useState<any>(() => {
+    try {
+      const cached = localStorage.getItem("userProfile.cache");
+      return cached ? JSON.parse(cached) : null;
+    } catch {
+      return null;
+    }
+  });
+  const [serverInfo, setServerInfo] = useState<any>(() => {
+    try {
+      const cached = localStorage.getItem("serverInfo.cache");
+      return cached ? JSON.parse(cached) : null;
+    } catch {
+      return null;
+    }
+  });
   const [authData] = useState(() =>
     JSON.parse(localStorage.getItem("authData") || "{}")
   );
@@ -25,8 +39,18 @@ const UserProfile = () => {
         getCurrentUser().catch((_e): null => null),
         getServerInfo().catch((_e): null => null),
       ]);
-      setCurrentUser(user);
-      setServerInfo(server);
+      if (user) {
+        setCurrentUser(user);
+        try {
+          localStorage.setItem("userProfile.cache", JSON.stringify(user));
+        } catch {}
+      }
+      if (server) {
+        setServerInfo(server);
+        try {
+          localStorage.setItem("serverInfo.cache", JSON.stringify(server));
+        } catch {}
+      }
     } catch (error) {
       logger.error("Failed to load user info", error);
     }

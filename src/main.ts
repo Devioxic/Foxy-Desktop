@@ -1,4 +1,4 @@
-import { app, BrowserWindow, shell, ipcMain } from "electron";
+import { app, BrowserWindow, shell, ipcMain, protocol } from "electron";
 import * as path from "path";
 import * as fs from "fs";
 import { logger } from "./lib/logger";
@@ -8,6 +8,8 @@ import { logger } from "./lib/logger";
 declare const MAIN_WINDOW_VITE_DEV_SERVER_URL: string | undefined;
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
 declare const MAIN_WINDOW_VITE_NAME: string | undefined;
+
+if (require('electron-squirrel-startup')) app.quit();
 
 const createWindow = async () => {
   const win = new BrowserWindow({
@@ -48,6 +50,20 @@ const createWindow = async () => {
   win.setMenu(null); // Hide the menu bar
 };
 
+// Register custom protocol before app is ready
+protocol.registerSchemesAsPrivileged([
+  {
+    scheme: "media",
+    privileges: {
+      standard: true,
+      secure: true,
+      supportFetchAPI: true,
+      corsEnabled: true,
+      stream: true,
+    },
+  },
+]);
+
 app.whenReady().then(async () => {
   // IPC for database persistence
   const dbPath = path.join(app.getPath("userData"), "foxy.sqlite");
@@ -74,6 +90,93 @@ app.whenReady().then(async () => {
       return null;
     }
   });
+
+  // IPC for media persistence (downloads)
+  const mediaDir = path.join(app.getPath("userData"), "media");
+  // Ensure media directory exists
+  try {
+    if (!fs.existsSync(mediaDir)) {
+      fs.mkdirSync(mediaDir, { recursive: true });
+    }
+  } catch (e) {
+    logger.error("Failed to create media directory", e);
+  }
+
+  // Save a media file buffer to media dir under a relative path (e.g., "tracks/<id>.mp3")
+  ipcMain.handle(
+    "media:save",
+    async (_evt, relativePath: string, data: ArrayBuffer) => {
+      try {
+        const safeRel = relativePath.replace(/\\/g, "/").replace(/\.+/g, ".");
+        const fullPath = path.join(mediaDir, safeRel);
+        await fs.promises.mkdir(path.dirname(fullPath), { recursive: true });
+        const tmp = `${fullPath}.tmp`;
+        await fs.promises.writeFile(tmp, Buffer.from(data));
+        await fs.promises.rename(tmp, fullPath);
+        return fullPath;
+      } catch (e) {
+        logger.error("media:save failed", e);
+        throw e;
+      }
+    }
+  );
+
+  // Delete a media file under media dir
+  ipcMain.handle("media:delete", async (_evt, relativePath: string) => {
+    try {
+      const safeRel = relativePath.replace(/\\/g, "/").replace(/\.+/g, ".");
+      const fullPath = path.join(mediaDir, safeRel);
+      if (fs.existsSync(fullPath)) await fs.promises.unlink(fullPath);
+      return true;
+    } catch (e) {
+      logger.error("media:delete failed", e);
+      return false;
+    }
+  });
+
+  // Resolve an absolute path for a relative media file and return file:// URL
+  ipcMain.handle("media:getFileUrl", async (_evt, relativePath: string) => {
+    try {
+      const safeRel = relativePath.replace(/\\/g, "/").replace(/\.+/g, ".");
+      const fullPath = path.join(mediaDir, safeRel);
+      if (!fs.existsSync(fullPath)) return null;
+      // Return custom protocol URL instead of file:// to avoid renderer restrictions
+      const customUrl = `media:///${encodeURI(safeRel)}`;
+      return customUrl;
+    } catch (e) {
+      logger.error("media:getFileUrl failed", e);
+      return null;
+    }
+  });
+
+  // Get the absolute media directory path
+  ipcMain.handle("media:getDir", async () => {
+    return mediaDir;
+  });
+
+  // Register media:// protocol to serve files from the userData/media directory BEFORE window loads
+  try {
+    protocol.registerFileProtocol("media", (request, callback) => {
+      try {
+        const url = new URL(request.url);
+        // Allow both media:///rel and media://host/rel
+        const host = url.host || "";
+        const pathname = url.pathname || "";
+        const joined = host
+          ? `${host}${pathname}`
+          : pathname.replace(/^\//, "");
+        const rel = decodeURI(joined);
+        const safeRel = rel.replace(/\\/g, "/").replace(/\.\./g, "");
+        const fullPath = path.join(mediaDir, safeRel);
+        callback({ path: fullPath });
+      } catch (err) {
+        logger.error("media protocol handler error", err);
+        callback({ error: -2 }); // FILE_NOT_FOUND
+      }
+    });
+  } catch (e) {
+    logger.error("Failed to register media:// protocol", e);
+  }
 
   await createWindow();
 
