@@ -29,8 +29,9 @@ Download the latest release for your platform from the [releases page](https://g
 - [x] Add a full library search
 - [x] Add support for crossfade and more playback settings
 - [x] Offline playback support
-- [ ] Add support for more themes
+- [x] Add support for more themes
 - [ ] Discord Rich Presence integration
+- [ ] Last.fm integration
 
 ## Bugs? Suggestions?
 If you find any bugs or have suggestions for new features, please open an [issue](https://github.com/Devioxic/Foxy-Desktop/issues).
