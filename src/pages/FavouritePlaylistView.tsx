@@ -223,7 +223,7 @@ const FavouritePlaylistView = () => {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-gray-50">
+      <div className="min-h-screen bg-background">
         <Sidebar activeSection="favourites" />
         <div className="ml-64 p-6">
           <LoadingSkeleton type="playlist" />

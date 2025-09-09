@@ -40,14 +40,14 @@ const SearchBar = ({
 
   return (
     <form onSubmit={handleSearch} className={`relative ${className}`}>
-      <Search className="absolute left-4 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
+      <Search className="absolute left-4 top-1/2 transform -translate-y-1/2 text-muted-foreground w-5 h-5" />
       <Input
         type="text"
         placeholder={placeholder}
         value={searchQuery}
         onChange={handleInputChange}
         onKeyDown={handleKeyDown}
-        className="pl-12 bg-gray-50 border-gray-200 rounded-2xl h-12 text-base w-full"
+        className="pl-12 bg-muted border-border rounded-2xl h-12 text-base w-full"
       />
     </form>
   );

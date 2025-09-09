@@ -64,7 +64,7 @@ const TrackListSkeleton: React.FC<{
     {Array.from({ length: count }).map((_, i) => (
       <div
         key={i}
-        className="group flex items-center gap-3 p-2 rounded-lg hover:bg-gray-50/80 transition-colors"
+        className="group flex items-center gap-3 p-2 rounded-lg hover:bg-accent/80 transition-colors"
       >
         <div className="w-8 h-8 flex items-center justify-center text-sm">
           <ShimmerDiv className="h-3 w-4 rounded" />
@@ -88,7 +88,7 @@ const QuickAccessCardSkeleton: React.FC<{ count?: number }> = ({
     {Array.from({ length: count }).map((_, i) => (
       <div
         key={i}
-        className="group cursor-pointer hover:shadow-md transition-shadow overflow-hidden rounded-lg border bg-white"
+        className="group cursor-pointer hover:shadow-md transition-shadow overflow-hidden rounded-lg border bg-card/50 dark:border-0 dark:bg-muted/30"
       >
         <div className="flex items-center h-20">
           <ShimmerDiv className="w-20 h-20 flex-shrink-0" />
@@ -109,14 +109,14 @@ const LoadingSkeleton: React.FC<LoadingSkeletonProps> = ({ type }) => {
       <div className="space-y-6">
         <div className="flex items-center justify-between mb-6">
           <div className="relative flex-1 max-w-md">
-            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
+            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground w-4 h-4" />
             <Input
               placeholder="Search artists..."
-              className="pl-10 bg-white border-gray-200 shadow-sm disabled:opacity-50"
+              className="pl-10 bg-background border-border shadow-sm disabled:opacity-50"
               disabled
             />
           </div>
-          <div className="flex items-center space-x-2 text-sm text-gray-600">
+          <div className="flex items-center space-x-2 text-sm text-muted-foreground">
             <ShimmerDiv className="h-4 w-16 rounded" />
           </div>
         </div>
@@ -130,10 +130,10 @@ const LoadingSkeleton: React.FC<LoadingSkeletonProps> = ({ type }) => {
       <div className="space-y-6">
         <div className="flex flex-col sm:flex-row gap-4 items-start sm:items-center justify-between mb-6">
           <div className="relative flex-1 max-w-md">
-            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
+            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground w-4 h-4" />
             <Input
               placeholder="Search albums..."
-              className="pl-10 bg-white border-gray-200 shadow-sm disabled:opacity-50"
+              className="pl-10 bg-background border-border shadow-sm disabled:opacity-50"
               disabled
             />
           </div>
@@ -169,10 +169,10 @@ const LoadingSkeleton: React.FC<LoadingSkeletonProps> = ({ type }) => {
           <ShimmerDiv className="h-8 w-32 mb-4 rounded" />
           <ShimmerDiv className="h-4 w-48 mb-6 rounded" />
           <div className="relative max-w-md">
-            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
+            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground w-4 h-4" />
             <Input
               placeholder="Search playlists..."
-              className="pl-10 bg-white border-gray-200 shadow-sm disabled:opacity-50"
+              className="pl-10 bg-background border-border shadow-sm disabled:opacity-50"
               disabled
             />
           </div>
@@ -190,15 +190,15 @@ const LoadingSkeleton: React.FC<LoadingSkeletonProps> = ({ type }) => {
           <ShimmerDiv className="h-4 w-48 rounded" />
         </div>
         <div className="space-y-4">
-          <h2 className="text-xl font-bold text-gray-900">Recently Played</h2>
+          <h2 className="text-xl font-bold text-foreground">Recently Played</h2>
           <QuickAccessCardSkeleton count={6} />
         </div>
         <div className="space-y-4">
-          <h2 className="text-xl font-bold text-gray-900">Recently Added</h2>
+          <h2 className="text-xl font-bold text-foreground">Recently Added</h2>
           <AlbumCardSkeleton count={12} />
         </div>
         <div className="space-y-4">
-          <h2 className="text-xl font-bold text-gray-900">Your Favorites</h2>
+          <h2 className="text-xl font-bold text-foreground">Your Favorites</h2>
           <AlbumCardSkeleton count={6} />
         </div>
       </div>
@@ -215,7 +215,7 @@ const LoadingSkeleton: React.FC<LoadingSkeletonProps> = ({ type }) => {
             <ShimmerDiv className="h-4 w-3/4 rounded" />
             <ShimmerDiv className="h-4 w-1/2 rounded" />
             <div className="flex space-x-4 mt-6">
-              <Button className="bg-pink-600 hover:bg-pink-700" disabled>
+              <Button className="bg-primary hover:bg-primary/90" disabled>
                 <Play className="w-4 h-4 mr-2" />
                 Play
               </Button>
@@ -227,11 +227,11 @@ const LoadingSkeleton: React.FC<LoadingSkeletonProps> = ({ type }) => {
           </div>
         </div>
         <div className="space-y-4">
-          <h2 className="text-xl font-bold text-gray-900">Albums</h2>
+          <h2 className="text-xl font-bold text-foreground">Albums</h2>
           <AlbumCardSkeleton count={8} />
         </div>
         <div className="space-y-4">
-          <h2 className="text-xl font-bold text-gray-900">Popular</h2>
+          <h2 className="text-xl font-bold text-foreground">Popular</h2>
           <TrackListSkeleton count={10} />
         </div>
       </div>
@@ -241,7 +241,7 @@ const LoadingSkeleton: React.FC<LoadingSkeletonProps> = ({ type }) => {
   if (type === "albumDetail") {
     return (
       <div className="space-y-8">
-        <Button variant="ghost" disabled className="mb-6 text-gray-600">
+        <Button variant="ghost" disabled className="mb-6 text-muted-foreground">
           ← Back
         </Button>
         <div className="flex flex-col md:flex-row gap-8">
@@ -250,14 +250,14 @@ const LoadingSkeleton: React.FC<LoadingSkeletonProps> = ({ type }) => {
             <ShimmerDiv className="h-8 w-1/2 rounded" />
             <ShimmerDiv className="h-4 w-1/3 rounded" />
             <ShimmerDiv className="h-4 w-1/4 rounded" />
-            <Button className="bg-pink-600 hover:bg-pink-700 mt-6" disabled>
+            <Button className="bg-primary hover:bg-primary/90 mt-6" disabled>
               <Play className="w-4 h-4 mr-2" />
               Play Album
             </Button>
           </div>
         </div>
         <div className="space-y-4">
-          <h2 className="text-xl font-bold text-gray-900">Tracks</h2>
+          <h2 className="text-xl font-bold text-foreground">Tracks</h2>
           <TrackListSkeleton count={12} showAlbumArt={false} />
         </div>
       </div>
@@ -267,7 +267,7 @@ const LoadingSkeleton: React.FC<LoadingSkeletonProps> = ({ type }) => {
   if (type === "playlist") {
     return (
       <div className="space-y-8">
-        <Button variant="ghost" disabled className="mb-6 text-gray-600">
+        <Button variant="ghost" disabled className="mb-6 text-muted-foreground">
           ← Back
         </Button>
         <div className="flex flex-col md:flex-row gap-8">
@@ -275,7 +275,7 @@ const LoadingSkeleton: React.FC<LoadingSkeletonProps> = ({ type }) => {
           <div className="flex-1 space-y-4">
             <ShimmerDiv className="h-8 w-1/2 rounded" />
             <ShimmerDiv className="h-4 w-1/4 rounded" />
-            <Button className="bg-pink-600 hover:bg-pink-700 mt-6" disabled>
+            <Button className="bg-primary hover:bg-primary/90 mt-6" disabled>
               <Play className="w-4 h-4 mr-2" />
               Play Playlist
             </Button>

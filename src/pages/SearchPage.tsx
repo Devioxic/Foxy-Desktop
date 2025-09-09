@@ -131,14 +131,14 @@ const SearchPage: React.FC = () => {
   };
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-background">
       {/* Sidebar */}
       <Sidebar activeSection="search" />
 
       {/* Main Content */}
       <div className="ml-64">
         {/* Top Bar */}
-        <div className="sticky top-0 z-30 bg-white/95 backdrop-blur-sm border-b border-gray-200">
+        <div className="sticky top-0 z-30 bg-background/95 backdrop-blur-sm border-b border-border">
           <div className="max-w-none mx-auto flex items-center justify-center p-6">
             <div className="flex-1 max-w-2xl">
               <SearchBar placeholder="Search entire library..." />
@@ -150,11 +150,11 @@ const SearchPage: React.FC = () => {
         <div className="max-w-none mx-auto p-6 pb-28">
           {!hasSearched && (
             <div className="text-center py-12">
-              <Music className="w-16 h-16 text-gray-400 mx-auto mb-4" />
-              <h2 className="text-2xl font-bold text-gray-900 mb-2">
+              <Music className="w-16 h-16 text-muted-foreground mx-auto mb-4" />
+              <h2 className="text-2xl font-bold text-foreground mb-2">
                 Search for music
               </h2>
-              <p className="text-gray-600">
+              <p className="text-muted-foreground">
                 Find songs, artists, albums, and playlists
               </p>
             </div>
@@ -168,10 +168,10 @@ const SearchPage: React.FC = () => {
                 <div className="space-y-8">
                   {/* Search Results Header */}
                   <div className="mb-6">
-                    <h1 className="text-2xl font-bold text-gray-900">
+                    <h1 className="text-2xl font-bold text-foreground">
                       Search results for "{query}"
                     </h1>
-                    <p className="text-gray-600 mt-1">
+                    <p className="text-muted-foreground mt-1">
                       {totalResults} result{totalResults !== 1 ? "s" : ""} found
                     </p>
                   </div>
@@ -179,7 +179,7 @@ const SearchPage: React.FC = () => {
                   {results.artists.length > 0 && (
                     <div>
                       <div className="mb-4 flex items-center justify-between">
-                        <h2 className="text-xl font-bold text-gray-900 flex items-center">
+                        <h2 className="text-xl font-bold text-foreground flex items-center">
                           <User className="w-5 h-5 mr-2" />
                           Artists ({results.artists.length})
                         </h2>
@@ -223,7 +223,7 @@ const SearchPage: React.FC = () => {
                               )}
                             </div>
                             <div className="text-center">
-                              <h3 className="text-sm font-medium text-gray-900 truncate mb-1 group-hover:text-pink-600 transition-colors">
+                              <h3 className="text-sm font-medium text-foreground truncate mb-1 group-hover:text-primary transition-colors">
                                 {artist.Name}
                               </h3>
                               <p className="text-xs text-gray-500">Artist</p>
@@ -238,7 +238,7 @@ const SearchPage: React.FC = () => {
                   {results.albums.length > 0 && (
                     <div>
                       <div className="mb-4 flex items-center justify-between">
-                        <h2 className="text-xl font-bold text-gray-900 flex items-center">
+                        <h2 className="text-xl font-bold text-foreground flex items-center">
                           <Disc3 className="w-5 h-5 mr-2" />
                           Albums ({results.albums.length})
                         </h2>
@@ -298,7 +298,7 @@ const SearchPage: React.FC = () => {
                   {results.playlists.length > 0 && (
                     <div>
                       <div className="mb-4 flex items-center justify-between">
-                        <h2 className="text-xl font-bold text-gray-900 flex items-center">
+                        <h2 className="text-xl font-bold text-foreground flex items-center">
                           <ListMusic className="w-5 h-5 mr-2" />
                           Playlists ({results.playlists.length})
                         </h2>

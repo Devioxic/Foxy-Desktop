@@ -126,25 +126,25 @@ const LoginPage = () => {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-pink-100 via-rose-100 to-pink-200 p-4">
-      <div className="fixed inset-0 bg-[radial-gradient(ellipse_at_center,rgba(236,72,153,0.15)_0%,rgba(255,255,255,0)_70%)] -z-20" />
-      <div className="fixed inset-0 bg-gradient-to-br from-pink-200/25 via-rose-200/25 to-pink-300/25 backdrop-blur-3xl -z-10" />
+    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-primary/10 via-primary/5 to-primary/10 p-4">
+      <div className="fixed inset-0 bg-[radial-gradient(ellipse_at_center,rgba(var(--primary),0.15)_0%,rgba(255,255,255,0)_70%)] -z-20" />
+      <div className="fixed inset-0 bg-gradient-to-br from-primary/25 via-primary/25 to-primary/30 backdrop-blur-3xl -z-10" />
 
       <div className="w-full max-w-md">
         <div className="text-center mb-10">
-          <div className="bg-gradient-to-br from-pink-200/80 to-rose-300/80 w-20 h-20 rounded-2xl mx-auto flex items-center justify-center shadow-lg backdrop-blur-sm border border-white/50 mb-6">
+          <div className="bg-gradient-to-br from-primary/80 to-primary/80 w-20 h-20 rounded-2xl mx-auto flex items-center justify-center shadow-lg backdrop-blur-sm border border-background/50 mb-6">
             <img src="./Foxy.svg" alt="Foxy" className="w-14 h-14" />
           </div>
-          <h1 className="text-3xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-pink-600 to-rose-600 mb-2">
+          <h1 className="text-3xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-primary to-primary mb-2">
             Foxy
           </h1>
-          <p className="text-pink-700/80">Sign in to your account</p>
+          <p className="text-primary/80">Sign in to your account</p>
         </div>
 
-        <div className="bg-white/30 backdrop-blur-xl rounded-3xl shadow-lg p-8 border border-white/50">
+        <div className="bg-background/30 backdrop-blur-xl rounded-3xl shadow-lg p-8 border border-background/50">
           <form onSubmit={handleLogin} className="space-y-6">
             <div>
-              <Label className="text-pink-800 font-medium mb-2 block">
+              <Label className="text-foreground font-medium mb-2 block">
                 Username
               </Label>
               <Input
@@ -152,13 +152,13 @@ const LoginPage = () => {
                 placeholder="Enter your username"
                 value={username}
                 onChange={(e) => setUsername(e.target.value)}
-                className="text-base h-12 rounded-xl bg-white/60 border-pink-200 focus:ring-2 focus:ring-pink-300"
+                className="text-base h-12 rounded-xl bg-background/60 border-border focus:ring-2 focus:ring-primary"
                 required
               />
             </div>
 
             <div>
-              <Label className="text-pink-800 font-medium mb-2 block">
+              <Label className="text-foreground font-medium mb-2 block">
                 Password
               </Label>
               <Input
@@ -166,13 +166,13 @@ const LoginPage = () => {
                 placeholder="Enter your password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                className="text-base h-12 rounded-xl bg-white/60 border-pink-200 focus:ring-2 focus:ring-pink-300"
+                className="text-base h-12 rounded-xl bg-background/60 border-border focus:ring-2 focus:ring-primary"
               />
             </div>
 
             <Button
               type="submit"
-              className="w-full h-14 bg-gradient-to-r from-pink-500 to-rose-500 hover:from-pink-600 hover:to-rose-600 text-white text-lg font-medium rounded-xl shadow-lg transition-all"
+              className="w-full h-14 bg-primary hover:bg-primary/90 text-primary-foreground text-lg font-medium rounded-xl shadow-lg transition-all"
               disabled={isLoading}
             >
               {isLoading ? (
@@ -186,27 +186,25 @@ const LoginPage = () => {
           {/* Quick Connect section */}
           <div className="mt-8">
             <div className="relative flex items-center">
-              <div className="flex-grow border-t border-pink-200/70"></div>
-              <span className="flex-shrink mx-4 text-pink-700/80 text-sm">
+              <div className="flex-grow border-t border-border/70"></div>
+              <span className="flex-shrink mx-4 text-muted-foreground text-sm">
                 Quick Connect
               </span>
-              <div className="flex-grow border-t border-pink-200/70"></div>
+              <div className="flex-grow border-t border-border/70"></div>
             </div>
 
             <div className="mt-6 text-center">
               {quickConnectCode ? (
-                <div className="mt-4 bg-pink-50/50 rounded-lg p-4 border border-pink-200/50 text-center relative">
-                  <p className="text-pink-700 font-medium">
-                    Quick Connect Code
-                  </p>
+                <div className="mt-4 bg-primary/10 rounded-lg p-4 border border-primary/20 text-center relative">
+                  <p className="text-primary font-medium">Quick Connect Code</p>
                   <div className="mt-1 flex items-center justify-center gap-3">
-                    <p className="text-2xl font-bold tracking-wider text-pink-800">
+                    <p className="text-2xl font-bold tracking-wider text-primary">
                       {quickConnectCode}
                     </p>
                     <button
                       type="button"
                       onClick={handleCopyCode}
-                      className="inline-flex items-center justify-center h-12 w-12 rounded-xl text-pink-600 hover:text-pink-700 transition outline-none"
+                      className="inline-flex items-center justify-center h-12 w-12 rounded-xl text-primary hover:text-primary/80 transition outline-none"
                       aria-label="Copy code"
                     >
                       {copied ? (
@@ -216,14 +214,14 @@ const LoginPage = () => {
                       )}
                     </button>
                   </div>
-                  <p className="text-pink-600/80 text-sm mt-2">
+                  <p className="text-primary/80 text-sm mt-2">
                     Enter this code in your Jellyfin app
                   </p>
 
                   {isPolling && (
                     <div className="mt-4 flex items-center justify-center">
-                      <Loader2 className="animate-spin mr-2 text-pink-500" />
-                      <span className="text-pink-600">
+                      <Loader2 className="animate-spin mr-2 text-primary" />
+                      <span className="text-primary">
                         Waiting for authentication...
                       </span>
                     </div>
@@ -233,13 +231,13 @@ const LoginPage = () => {
                 <div className="mt-4 flex items-center justify-center">
                   {isPolling ? (
                     <>
-                      <Loader2 className="animate-spin mr-2 text-pink-500" />
-                      <span className="text-pink-600">
+                      <Loader2 className="animate-spin mr-2 text-primary" />
+                      <span className="text-primary">
                         Setting up Quick Connect...
                       </span>
                     </>
                   ) : (
-                    <p className="text-pink-600/80">
+                    <p className="text-primary/80">
                       Preparing Quick Connect...
                     </p>
                   )}
@@ -247,7 +245,7 @@ const LoginPage = () => {
               )}
 
               {quickConnectError && (
-                <div className="mt-4 text-red-500 bg-red-50/50 rounded-lg p-3">
+                <div className="mt-4 text-destructive bg-destructive/10 rounded-lg p-3">
                   {quickConnectError}
                 </div>
               )}
@@ -257,7 +255,7 @@ const LoginPage = () => {
 
         <div className="mt-6 text-center">
           <button
-            className="text-pink-700 hover:text-pink-800 text-sm font-medium flex items-center justify-center mx-auto"
+            className="text-primary hover:text-primary/80 text-sm font-medium flex items-center justify-center mx-auto"
             onClick={() => navigate("/server")}
           >
             <svg
@@ -276,7 +274,7 @@ const LoginPage = () => {
           </button>
         </div>
 
-        <div className="mt-8 text-center text-pink-600/70 text-sm">
+        <div className="mt-8 text-center text-primary/70 text-sm">
           <p>Foxy Desktop v1.0.0</p>
         </div>
       </div>

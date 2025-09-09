@@ -30,11 +30,13 @@ import {
 import { useMusicPlayer } from "@/contexts/MusicContext";
 import { useToast } from "@/hooks/use-toast";
 import { clearAllDownloads } from "@/lib/downloads";
+import { useTheme } from "next-themes";
 
 export default function SettingsPage() {
   const navigate = useNavigate();
   const { authData, clearAuthData } = useAuthData();
   const { toast } = useToast();
+  const { theme, setTheme, systemTheme } = useTheme();
   const [useLocalFirst, setUseLocalFirst] = useState<boolean>(() => {
     const stored = localStorage.getItem("useLocalFirst");
     return stored ? stored === "true" : true;
@@ -78,17 +80,17 @@ export default function SettingsPage() {
   };
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-background">
       <Sidebar />
       <div className="ml-64 p-6 pb-28">
         {/* Header (non-sticky to match other pages) */}
         {!showLyrics && (
           <div className="mb-8">
             <div className="flex items-center justify-between">
-              <h1 className="text-3xl font-bold text-gray-900">Settings</h1>
+              <h1 className="text-3xl font-bold text-foreground">Settings</h1>
               <BackButton label="Back" />
             </div>
-            <p className="text-gray-600 mt-2">
+            <p className="text-muted-foreground mt-2">
               Manage your Foxy Music Player preferences
             </p>
           </div>
@@ -97,31 +99,31 @@ export default function SettingsPage() {
         {/* Content hidden when lyrics are open */}
         {!showLyrics && (
           <Tabs defaultValue="sync" className="w-full max-w-6xl">
-            <TabsList className="grid w-full grid-cols-4 bg-gray-200 p-1 rounded-lg">
+            <TabsList className="grid w-full grid-cols-4 bg-muted p-1 rounded-lg">
               <TabsTrigger
                 value="sync"
-                className="flex items-center space-x-2 data-[state=active]:bg-white data-[state=active]:text-gray-900 data-[state=active]:shadow-sm font-medium rounded-md"
+                className="flex items-center space-x-2 data-[state=active]:bg-background data-[state=active]:text-foreground data-[state=active]:shadow-sm font-medium rounded-md"
               >
                 <Database className="w-4 h-4" />
                 <span>Sync & Storage</span>
               </TabsTrigger>
               <TabsTrigger
                 value="playback"
-                className="flex items-center space-x-2 data-[state=active]:bg-white data-[state=active]:text-gray-900 data-[state=active]:shadow-sm font-medium rounded-md"
+                className="flex items-center space-x-2 data-[state=active]:bg-background data-[state=active]:text-foreground data-[state=active]:shadow-sm font-medium rounded-md"
               >
                 <Volume2 className="w-4 h-4" />
                 <span>Playback</span>
               </TabsTrigger>
               <TabsTrigger
                 value="appearance"
-                className="flex items-center space-x-2 data-[state=active]:bg-white data-[state=active]:text-gray-900 data-[state=active]:shadow-sm font-medium rounded-md"
+                className="flex items-center space-x-2 data-[state=active]:bg-background data-[state=active]:text-foreground data-[state=active]:shadow-sm font-medium rounded-md"
               >
                 <Palette className="w-4 h-4" />
                 <span>Appearance</span>
               </TabsTrigger>
               <TabsTrigger
                 value="account"
-                className="flex items-center space-x-2 data-[state=active]:bg-white data-[state=active]:text-gray-900 data-[state=active]:shadow-sm font-medium rounded-md"
+                className="flex items-center space-x-2 data-[state=active]:bg-background data-[state=active]:text-foreground data-[state=active]:shadow-sm font-medium rounded-md"
               >
                 <Server className="w-4 h-4" />
                 <span>Server</span>
@@ -133,7 +135,7 @@ export default function SettingsPage() {
                 <h3 className="text-lg font-medium mb-2">
                   Sync & Storage Settings
                 </h3>
-                <p className="text-sm text-gray-600 mb-6">
+                <p className="text-sm text-muted-foreground mb-6">
                   Manage how your music library is synchronized and stored
                   locally for better performance and offline access.
                 </p>
@@ -154,7 +156,7 @@ export default function SettingsPage() {
                       <div className="text-sm font-medium">
                         Prefer Local Data
                       </div>
-                      <div className="text-xs text-gray-600">
+                      <div className="text-xs text-muted-foreground">
                         Load music data from local storage first for faster
                         performance
                       </div>
@@ -170,7 +172,7 @@ export default function SettingsPage() {
                   <div className="flex items-center justify-between">
                     <div className="space-y-1">
                       <div className="text-sm font-medium">Auto-Sync</div>
-                      <div className="text-xs text-gray-600">
+                      <div className="text-xs text-muted-foreground">
                         Automatically sync library changes in the background
                       </div>
                     </div>
@@ -186,7 +188,7 @@ export default function SettingsPage() {
                       <div className="text-sm font-medium">
                         Clear All Downloads
                       </div>
-                      <div className="text-xs text-gray-600">
+                      <div className="text-xs text-muted-foreground">
                         Remove all downloaded media files and cached flags. This
                         cannot be undone.
                       </div>
@@ -227,7 +229,7 @@ export default function SettingsPage() {
             <TabsContent value="playback" className="space-y-6">
               <div>
                 <h3 className="text-lg font-medium mb-2">Playback Settings</h3>
-                <p className="text-sm text-gray-600 mb-6">
+                <p className="text-sm text-muted-foreground mb-6">
                   Configure audio playback and streaming preferences.
                 </p>
               </div>
@@ -252,7 +254,7 @@ export default function SettingsPage() {
                 <h3 className="text-lg font-medium mb-2">
                   Appearance Settings
                 </h3>
-                <p className="text-sm text-gray-600 mb-6">
+                <p className="text-sm text-muted-foreground mb-6">
                   Customize the look and feel of your music player.
                 </p>
               </div>
@@ -260,10 +262,33 @@ export default function SettingsPage() {
               <Card>
                 <CardHeader>
                   <CardTitle className="text-base">Theme</CardTitle>
-                  <CardDescription>Theme settings coming soon.</CardDescription>
+                  <CardDescription>
+                    Choose your preferred color scheme.
+                  </CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-4">
-                  {/* Theme description removed per request */}
+                  <div className="space-y-2">
+                    <div className="text-sm font-medium">Appearance</div>
+                    <Select
+                      value={(theme as string) || "system"}
+                      onValueChange={(v) => setTheme(v)}
+                    >
+                      <SelectTrigger className="w-60 focus:ring-0 focus:outline-none focus-visible:ring-0">
+                        <SelectValue placeholder="Theme" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="system">
+                          Automatic (Default)
+                        </SelectItem>
+                        <SelectItem value="light">Light</SelectItem>
+                        <SelectItem value="dark">Dark</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    <p className="text-[11px] text-muted-foreground">
+                      Current:{" "}
+                      {(theme === "system" ? systemTheme : theme) || "system"}
+                    </p>
+                  </div>
                 </CardContent>
               </Card>
             </TabsContent>
@@ -271,7 +296,7 @@ export default function SettingsPage() {
             <TabsContent value="account" className="space-y-6">
               <div>
                 <h3 className="text-lg font-medium mb-2">Server Settings</h3>
-                <p className="text-sm text-gray-600 mb-6">
+                <p className="text-sm text-muted-foreground mb-6">
                   Manage your Jellyfin server connection and account.
                 </p>
               </div>
@@ -285,16 +310,16 @@ export default function SettingsPage() {
                 <CardContent className="space-y-4">
                   <div className="grid grid-cols-2 gap-4 text-sm">
                     <div>
-                      <div className="font-medium text-gray-700">
+                      <div className="font-medium text-foreground">
                         Server Address
                       </div>
-                      <div className="text-gray-600">
+                      <div className="text-muted-foreground">
                         {authData?.serverAddress || "Not connected"}
                       </div>
                     </div>
                     <div>
-                      <div className="font-medium text-gray-700">User ID</div>
-                      <div className="text-gray-600 font-mono text-xs">
+                      <div className="font-medium text-foreground">User ID</div>
+                      <div className="text-muted-foreground font-mono text-xs">
                         {authData?.userId || "N/A"}
                       </div>
                     </div>
@@ -343,7 +368,7 @@ function PlaybackSettingsPanel() {
       <div className="space-y-2">
         <div className="flex items-center justify-between">
           <span className="text-sm font-medium">Master Volume</span>
-          <span className="text-xs text-gray-500">
+          <span className="text-xs text-muted-foreground">
             {Math.round(volume * 100)}%
           </span>
         </div>
@@ -360,7 +385,9 @@ function PlaybackSettingsPanel() {
       <div className="space-y-2">
         <div className="flex items-center justify-between">
           <span className="text-sm font-medium">Streaming Quality</span>
-          <span className="text-xs text-gray-500 capitalize">{quality}</span>
+          <span className="text-xs text-muted-foreground capitalize">
+            {quality}
+          </span>
         </div>
         <Select value={quality} onValueChange={(v) => setQuality(v)}>
           <SelectTrigger className="w-48 focus:ring-0 focus:outline-none focus-visible:ring-0">
@@ -373,7 +400,7 @@ function PlaybackSettingsPanel() {
             <SelectItem value="low">Low (128 kbps)</SelectItem>
           </SelectContent>
         </Select>
-        <p className="text-[11px] text-gray-500">
+        <p className="text-[11px] text-muted-foreground">
           Lower qualities may transcode to reduce bandwidth.
         </p>
       </div>
@@ -381,7 +408,7 @@ function PlaybackSettingsPanel() {
       <div className="flex items-center justify-between">
         <div className="space-y-0.5">
           <div className="text-sm font-medium">Normalize Volume</div>
-          <div className="text-xs text-gray-500">
+          <div className="text-xs text-muted-foreground">
             Level songs using ReplayGain/R128 when available; falls back to
             gentle compression.
           </div>
@@ -394,7 +421,9 @@ function PlaybackSettingsPanel() {
       <div className="space-y-2">
         <div className="flex items-center justify-between">
           <span className="text-sm font-medium">Crossfade (s)</span>
-          <span className="text-xs text-gray-500">{crossfadeSeconds}s</span>
+          <span className="text-xs text-muted-foreground">
+            {crossfadeSeconds}s
+          </span>
         </div>
         <div className="group py-2">
           <Slider
@@ -405,7 +434,7 @@ function PlaybackSettingsPanel() {
           />
         </div>
       </div>
-      <p className="text-[11px] text-gray-500 leading-relaxed">
+      <p className="text-[11px] text-muted-foreground leading-relaxed">
         Changes apply instantly.
       </p>
     </div>

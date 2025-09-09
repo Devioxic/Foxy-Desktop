@@ -54,7 +54,7 @@ const PlaylistCard: React.FC<PlaylistCardProps> = ({
     <div className="cursor-pointer group w-48" onClick={handleCardClick}>
       <Card className="overflow-hidden shadow-sm hover:shadow-md transition-shadow w-full">
         <CardContent className="p-0">
-          <div className="aspect-square bg-gray-100">
+          <div className="aspect-square bg-muted">
             {getPlaylistArt() ? (
               <BlurHashImage
                 src={getPlaylistArt()!}
@@ -65,19 +65,19 @@ const PlaylistCard: React.FC<PlaylistCardProps> = ({
                 height={400}
               />
             ) : (
-              <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-pink-200 to-rose-200">
-                <ListMusic className="w-8 h-8 text-pink-400" />
+              <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-primary/20 to-primary/30">
+                <ListMusic className="w-8 h-8 text-primary/60" />
               </div>
             )}
           </div>
         </CardContent>
       </Card>
       <div className="mt-2 text-center">
-        <p className="text-sm font-medium text-gray-900 truncate group-hover:text-pink-600">
+        <p className="text-sm font-medium text-card-foreground truncate group-hover:text-primary">
           {item.Name}
         </p>
         {item.ChildCount !== undefined && (
-          <p className="text-xs text-gray-500">
+          <p className="text-xs text-muted-foreground">
             {item.ChildCount} {item.ChildCount === 1 ? "track" : "tracks"}
           </p>
         )}

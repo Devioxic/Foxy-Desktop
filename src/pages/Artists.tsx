@@ -40,17 +40,17 @@ const Artists = () => {
 
   // Generate a consistent color gradient based on artist name
   const getArtistGradient = (artistName?: string) => {
-    if (!artistName) return "from-pink-200 to-rose-300";
+    if (!artistName) return "from-primary/20 to-primary/30";
 
     const gradients = [
-      "from-pink-200 to-rose-300",
-      "from-rose-200 to-pink-300",
-      "from-pink-100 to-rose-200",
-      "from-rose-100 to-pink-200",
-      "from-pink-300 to-rose-400",
-      "from-rose-300 to-pink-400",
-      "from-pink-200 to-rose-400",
-      "from-rose-200 to-pink-400",
+      "from-primary/20 to-primary/30",
+      "from-primary/30 to-primary/20",
+      "from-primary/10 to-primary/20",
+      "from-primary/20 to-primary/10",
+      "from-primary/30 to-primary/40",
+      "from-primary/40 to-primary/30",
+      "from-primary/20 to-primary/40",
+      "from-primary/40 to-primary/20",
     ];
 
     // Use character codes to get consistent gradient for same artist name
@@ -163,7 +163,7 @@ const Artists = () => {
   };
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-background">
       <Sidebar activeSection="artists" />
       <div className="ml-64 pb-28">
         <div className="max-w-none mx-auto p-6">
@@ -174,10 +174,10 @@ const Artists = () => {
             <>
               {/* Header */}
               <div className="mb-8">
-                <h1 className="text-3xl font-bold text-gray-900 mb-4">
+                <h1 className="text-3xl font-bold text-foreground mb-4">
                   Artists
                 </h1>
-                <p className="text-gray-600 mb-6">
+                <p className="text-muted-foreground mb-6">
                   {filteredArtists.length}{" "}
                   {filteredArtists.length === 1 ? "artist" : "artists"}
                   {filteredArtists.length > ARTISTS_PER_PAGE && (
@@ -192,7 +192,7 @@ const Artists = () => {
 
                 {/* Search */}
                 <div className="relative max-w-md">
-                  <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
+                  <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground w-4 h-4" />
                   <Input
                     placeholder="Search artists..."
                     value={searchQuery}
@@ -204,7 +204,7 @@ const Artists = () => {
                       else params.delete("q");
                       setSearchParams(params, { replace: false });
                     }}
-                    className="pl-10 bg-white border-gray-200"
+                    className="pl-10 bg-background border-border"
                   />
                 </div>
               </div>
@@ -219,7 +219,7 @@ const Artists = () => {
                         className="group cursor-pointer transition-all duration-200"
                         onClick={() => handleArtistClick(artist)}
                       >
-                        <div className="aspect-square mb-3 rounded-full overflow-hidden bg-gradient-to-br from-pink-100 to-rose-200 shadow-sm hover:shadow-md transition-shadow">
+                        <div className="aspect-square mb-3 rounded-full overflow-hidden bg-gradient-to-br from-primary/10 to-primary/20 shadow-sm hover:shadow-md transition-shadow">
                           {getArtistImage(artist) ? (
                             <BlurHashImage
                               src={getArtistImage(artist)!}
@@ -235,15 +235,15 @@ const Artists = () => {
                                 artist.Name
                               )}`}
                             >
-                              <User className="w-8 h-8 text-pink-600" />
+                              <User className="w-8 h-8 text-primary" />
                             </div>
                           )}
                         </div>
                         <div className="text-center">
-                          <h3 className="text-sm font-medium text-gray-900 truncate mb-1 group-hover:text-pink-600 transition-colors">
+                          <h3 className="text-sm font-medium text-foreground truncate mb-1 group-hover:text-primary transition-colors">
                             {artist.Name}
                           </h3>
-                          <p className="text-xs text-gray-500">
+                          <p className="text-xs text-muted-foreground">
                             {(() => {
                               const albums =
                                 artist.AlbumCount ||
@@ -313,11 +313,11 @@ const Artists = () => {
               {searchQuery && filteredArtists.length === 0 && (
                 <div className="flex items-center justify-center h-64">
                   <div className="text-center">
-                    <Users className="w-16 h-16 text-pink-400 mx-auto mb-4" />
-                    <h2 className="text-xl font-semibold text-gray-900 mb-2">
+                    <Users className="w-16 h-16 text-muted-foreground mx-auto mb-4" />
+                    <h2 className="text-xl font-semibold text-foreground mb-2">
                       No artists found
                     </h2>
-                    <p className="text-gray-600">
+                    <p className="text-muted-foreground">
                       Try adjusting your search to find more artists.
                     </p>
                   </div>
@@ -328,11 +328,11 @@ const Artists = () => {
               {!searchQuery && filteredArtists.length === 0 && (
                 <div className="flex items-center justify-center h-64">
                   <div className="text-center">
-                    <Users className="w-16 h-16 text-pink-400 mx-auto mb-4" />
-                    <h2 className="text-xl font-semibold text-gray-900 mb-2">
+                    <Users className="w-16 h-16 text-muted-foreground mx-auto mb-4" />
+                    <h2 className="text-xl font-semibold text-foreground mb-2">
                       No artists available
                     </h2>
-                    <p className="text-gray-600">
+                    <p className="text-muted-foreground">
                       Only artists with albums are shown. None were found.
                     </p>
                   </div>

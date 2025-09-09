@@ -177,17 +177,17 @@ const LyricsComponent: React.FC<LyricsProps> = ({ isOpen, onClose }) => {
                       onClick={() => handleLyricClick(line)}
                       className={`group transition-colors duration-200 cursor-pointer select-none text-center leading-snug tracking-wide ${
                         isActive
-                          ? "text-pink-500 font-semibold text-2xl sm:text-3xl"
+                          ? "text-primary font-semibold text-2xl sm:text-3xl"
                           : lyrics.isTimeSynced
-                            ? "text-gray-600 hover:text-gray-800 text-lg sm:text-xl"
-                            : "text-gray-800 text-lg sm:text-xl"
+                            ? "text-muted-foreground hover:text-foreground text-lg sm:text-xl"
+                            : "text-foreground text-lg sm:text-xl"
                       }`}
                       style={{
                         transitionProperty: "color",
                       }}
                     >
                       {line.text || (
-                        <span className="italic text-gray-400">
+                        <span className="italic text-muted-foreground">
                           ♪ Instrumental ♪
                         </span>
                       )}
@@ -196,8 +196,8 @@ const LyricsComponent: React.FC<LyricsProps> = ({ isOpen, onClose }) => {
                 })}
                 {lyrics.lyrics.length === 0 && (
                   <div className="text-center py-24">
-                    <Music className="w-16 h-16 text-gray-300 mx-auto mb-6" />
-                    <p className="text-gray-600 text-xl">
+                    <Music className="w-16 h-16 text-muted-foreground mx-auto mb-6" />
+                    <p className="text-muted-foreground text-xl">
                       No lyrics to display
                     </p>
                   </div>

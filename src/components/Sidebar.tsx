@@ -71,12 +71,12 @@ const Sidebar: React.FC<SidebarProps> = React.memo(
     );
 
     return (
-      <div className="fixed left-0 top-0 w-64 h-full bg-white border-r border-gray-200 z-40 flex flex-col">
+      <div className="fixed left-0 top-0 w-64 h-full bg-card border-r border-border z-40 flex flex-col">
         <div className="p-6 flex-1 overflow-y-auto">
           {/* Logo and Branding */}
           <div className="flex items-center space-x-3 mb-8">
             <img src="./Foxy.svg" alt="Foxy" className="w-8 h-8" />
-            <h1 className="text-xl font-bold text-gray-900">Foxy</h1>
+            <h1 className="text-xl font-bold text-card-foreground">Foxy</h1>
           </div>
 
           {/* Navigation */}
@@ -87,8 +87,8 @@ const Sidebar: React.FC<SidebarProps> = React.memo(
                 onClick={() => handleSectionClick(item.id)}
                 className={`w-full flex items-center space-x-3 px-3 py-2 rounded-lg text-left transition-colors ${
                   currentActiveSection === item.id
-                    ? "bg-pink-100 text-pink-700"
-                    : "text-gray-700 hover:bg-gray-100"
+                    ? "bg-primary/10 text-primary"
+                    : "text-card-foreground hover:bg-accent hover:text-accent-foreground"
                 }`}
               >
                 <item.icon className="w-5 h-5" />
@@ -99,7 +99,7 @@ const Sidebar: React.FC<SidebarProps> = React.memo(
         </div>
 
         {/* User Profile */}
-        <div className="border-t border-gray-200">
+        <div className="border-t border-border">
           <UserProfile />
         </div>
       </div>

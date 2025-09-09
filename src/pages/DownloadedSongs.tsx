@@ -143,7 +143,7 @@ const DownloadedSongs: React.FC = () => {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-gray-50">
+      <div className="min-h-screen bg-background">
         <Sidebar activeSection="downloads" />
         <div className="ml-64 p-6">Loading downloads…</div>
         <MusicPlayer />
@@ -152,7 +152,7 @@ const DownloadedSongs: React.FC = () => {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-background">
       <Sidebar activeSection="downloads" />
       <div className="ml-64 p-6 pb-28">
         {/* Header */}
@@ -160,21 +160,21 @@ const DownloadedSongs: React.FC = () => {
         <div className="flex gap-8 mb-8 mt-2">
           <div className="flex-shrink-0">
             <div className="w-40 h-40 md:w-64 md:h-64 rounded-lg shadow-lg overflow-hidden">
-              <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-pink-200 to-rose-200">
-                <MusicIcon className="w-16 h-16 text-pink-600" />
+              <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-primary/20 to-primary/30">
+                <MusicIcon className="w-16 h-16 text-primary" />
               </div>
             </div>
           </div>
           <div className="flex-1 space-y-4">
             <div>
-              <h1 className="text-4xl font-bold text-gray-900 mb-2 leading-tight">
+              <h1 className="text-4xl font-bold text-foreground mb-2 leading-tight">
                 Downloaded Songs
               </h1>
-              <p className="text-gray-600 text-sm">
+              <p className="text-muted-foreground text-sm">
                 Your offline tracks, ready to play anytime
               </p>
             </div>
-            <div className="flex items-center gap-4 text-sm text-gray-600">
+            <div className="flex items-center gap-4 text-sm text-muted-foreground">
               <span>{tracks.length} tracks</span>
               <span>•</span>
               <span>
@@ -206,11 +206,11 @@ const DownloadedSongs: React.FC = () => {
         </div>
 
         {tracks.length === 0 ? (
-          <p className="text-gray-600">No downloaded songs yet.</p>
+          <p className="text-muted-foreground">No downloaded songs yet.</p>
         ) : (
-          <div className="bg-white rounded-xl shadow-sm border border-gray-200">
+          <div className="bg-card rounded-xl shadow-sm border border-border">
             <div className="p-4">
-              <h3 className="text-base font-semibold text-gray-900 mb-3">
+              <h3 className="text-base font-semibold text-card-foreground mb-3">
                 Tracks
               </h3>
               <TrackList

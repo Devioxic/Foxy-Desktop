@@ -133,28 +133,28 @@ const ServerAddressPage = () => {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-pink-100 via-rose-100 to-pink-200 p-4">
-      <div className="fixed inset-0 bg-[radial-gradient(ellipse_at_center,rgba(236,72,153,0.15)_0%,rgba(255,255,255,0)_70%)] -z-20" />
-      <div className="fixed inset-0 bg-gradient-to-br from-pink-200/40 via-rose-200/40 to-pink-300/40 backdrop-blur-3xl -z-10" />
+    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-primary/10 via-primary/5 to-primary/10 p-4">
+      <div className="fixed inset-0 bg-[radial-gradient(ellipse_at_center,rgba(var(--primary),0.15)_0%,rgba(255,255,255,0)_70%)] -z-20" />
+      <div className="fixed inset-0 bg-gradient-to-br from-primary/25 via-primary/25 to-primary/30 backdrop-blur-3xl -z-10" />
       <div className="w-full max-w-lg space-y-8">
         <div className="text-center space-y-3">
-          <div className="mx-auto w-20 h-20 rounded-2xl bg-gradient-to-br from-pink-200/80 to-rose-300/80 flex items-center justify-center shadow-lg backdrop-blur-sm border border-white/50 overflow-hidden">
+          <div className="mx-auto w-20 h-20 rounded-2xl bg-gradient-to-br from-primary/80 to-primary/80 flex items-center justify-center shadow-lg backdrop-blur-sm border border-background/50 overflow-hidden">
             <img src="./Foxy.svg" alt="Foxy" className="w-14 h-14" />
           </div>
-          <h1 className="text-3xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-pink-600 to-rose-600">
+          <h1 className="text-3xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-primary to-primary">
             Connect to Jellyfin
           </h1>
-          <p className="text-pink-700/80">
+          <p className="text-primary/80">
             Enter your server host or URL to continue
           </p>
         </div>
 
         <form
           onSubmit={handleValidate}
-          className="bg-white/40 backdrop-blur-xl rounded-3xl shadow-lg p-8 border border-white/50 space-y-6"
+          className="bg-background/40 backdrop-blur-xl rounded-3xl shadow-lg p-8 border border-background/50 space-y-6"
         >
           <div className="space-y-2">
-            <Label className="text-pink-800 font-medium" htmlFor="server">
+            <Label className="text-foreground font-medium" htmlFor="server">
               Server Address or Hostname
             </Label>
             <Input
@@ -162,13 +162,13 @@ const ServerAddressPage = () => {
               placeholder="demo.jellyfin.org/stable"
               value={rawInput}
               onChange={(e) => setRawInput(e.target.value)}
-              className="h-12 rounded-xl bg-white/70 border-pink-200 focus:ring-2 focus:ring-pink-300"
+              className="h-12 rounded-xl bg-background/70 border-border focus:ring-2 focus:ring-primary"
               autoFocus
             />
           </div>
 
           {status.state === "error" && (
-            <div className="text-sm text-red-600 bg-red-50/60 border border-red-200 rounded-lg p-3">
+            <div className="text-sm text-destructive bg-destructive/10 border border-destructive/20 rounded-lg p-3">
               {status.message}
             </div>
           )}
@@ -182,7 +182,7 @@ const ServerAddressPage = () => {
             <Button
               type="submit"
               disabled={status.state === "validating"}
-              className="flex-1 h-12 bg-gradient-to-r from-pink-500 to-rose-500 hover:from-pink-600 hover:to-rose-600 text-white font-medium rounded-xl shadow-lg"
+              className="flex-1 h-12 bg-primary hover:bg-primary/90 text-primary-foreground font-medium rounded-xl shadow-lg"
             >
               {status.state === "validating" ? "Validating..." : "Validate"}
             </Button>
@@ -190,7 +190,7 @@ const ServerAddressPage = () => {
               type="button"
               onClick={handleContinue}
               disabled={status.state === "validating"}
-              className="flex-1 h-12 bg-pink-200 hover:bg-pink-300 text-pink-800 font-medium rounded-xl"
+              className="flex-1 h-12 bg-secondary hover:bg-secondary/80 text-secondary-foreground font-medium rounded-xl"
               variant="secondary"
             >
               Continue
@@ -198,7 +198,7 @@ const ServerAddressPage = () => {
           </div>
         </form>
 
-        <div className="text-center text-pink-700/70 text-sm">
+        <div className="text-center text-primary/70 text-sm">
           <p>Foxy Desktop v1.0.0</p>
         </div>
       </div>

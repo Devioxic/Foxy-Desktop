@@ -415,7 +415,7 @@ const PlaylistView = () => {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-gray-50">
+      <div className="min-h-screen bg-background">
         <Sidebar activeSection="playlists" />
         <div className="ml-64 p-6">
           <LoadingSkeleton type="playlist" />
@@ -430,16 +430,16 @@ const PlaylistView = () => {
 
   if (!playlistInfo) {
     return (
-      <div className="min-h-screen bg-gray-50">
+      <div className="min-h-screen bg-background">
         <Sidebar activeSection="playlists" />
         <div className="ml-64 p-6 pb-28">
           <div className="flex items-center justify-center h-64">
             <div className="text-center">
-              <ListMusic className="w-16 h-16 text-gray-400 mx-auto mb-4" />
-              <h2 className="text-xl font-semibold text-gray-900 mb-2">
+              <ListMusic className="w-16 h-16 text-muted-foreground mx-auto mb-4" />
+              <h2 className="text-xl font-semibold text-foreground mb-2">
                 Playlist not found
               </h2>
-              <p className="text-gray-600">
+              <p className="text-muted-foreground">
                 The playlist you're looking for doesn't exist or has been
                 removed.
               </p>
@@ -465,7 +465,7 @@ const PlaylistView = () => {
   const showPlaceholder = !imageUrl || imageError;
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-background">
       <Sidebar activeSection="playlists" />
       <div className="ml-64 p-6 pb-28">
         {/* Back Button */}
@@ -476,8 +476,8 @@ const PlaylistView = () => {
           <div className="flex-shrink-0">
             <div className="w-64 h-64 rounded-lg shadow-lg overflow-hidden">
               {showPlaceholder ? (
-                <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-pink-200 to-rose-200">
-                  <ListMusic className="w-16 h-16 text-pink-600" />
+                <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-primary/20 to-primary/30">
+                  <ListMusic className="w-16 h-16 text-primary" />
                 </div>
               ) : (
                 <img
@@ -492,12 +492,12 @@ const PlaylistView = () => {
 
           <div className="flex-1 space-y-4">
             <div>
-              <h1 className="text-4xl font-bold text-gray-900 mb-4 leading-tight">
+              <h1 className="text-4xl font-bold text-foreground mb-4 leading-tight">
                 {playlistInfo.Name}
               </h1>
             </div>
 
-            <div className="flex items-center gap-4 text-sm text-gray-600">
+            <div className="flex items-center gap-4 text-sm text-muted-foreground">
               {playlistInfo.ChildCount && (
                 <span>{playlistInfo.ChildCount} tracks</span>
               )}
@@ -516,7 +516,7 @@ const PlaylistView = () => {
               <Button
                 onClick={handlePlayAll}
                 disabled={tracks.length === 0}
-                className="bg-pink-600 hover:bg-pink-700 px-8"
+                className="bg-primary hover:bg-primary/90 px-8"
               >
                 <Play className="w-4 h-4 mr-2" />
                 Play
@@ -537,7 +537,7 @@ const PlaylistView = () => {
                   <Button
                     variant="ghost"
                     size="sm"
-                    className="p-1 text-gray-600 hover:text-pink-600 hover:bg-gray-100"
+                    className="p-1 text-muted-foreground hover:text-primary hover:bg-accent"
                     onClick={(e) => e.stopPropagation()}
                     aria-label="Playlist options"
                   >
@@ -552,7 +552,7 @@ const PlaylistView = () => {
                       <Loader2 className="w-4 h-4 animate-spin" />
                     ) : (
                       <Download
-                        className={`w-4 h-4 ${isDownloaded ? "text-pink-600" : ""}`}
+                        className={`w-4 h-4 ${isDownloaded ? "text-primary" : ""}`}
                       />
                     ),
                     onSelect: () => handleToggleDownload(),
