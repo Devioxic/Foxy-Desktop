@@ -623,9 +623,9 @@ const PlaylistView = () => {
 
         {/* Track List - Hidden when lyrics are open */}
         {!showLyrics && (
-          <div className="bg-white rounded-xl shadow-sm border border-gray-200">
+          <div className="bg-card rounded-xl shadow-sm border border-border">
             <div className="p-4">
-              <h3 className="text-base font-semibold text-gray-900 mb-3">
+              <h3 className="text-base font-semibold text-card-foreground mb-3">
                 Tracks
               </h3>
 
