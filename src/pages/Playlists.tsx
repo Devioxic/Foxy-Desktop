@@ -164,16 +164,16 @@ const Playlists = () => {
     >
       <Card className="aspect-square hover:shadow-lg transition-shadow">
         <CardContent className="p-0 h-full">
-          <div className="aspect-square bg-gradient-to-br from-pink-200 to-rose-200 flex items-center justify-center">
-            <Plus className="w-12 h-12 text-pink-600 group-hover:scale-110 transition-transform" />
+          <div className="aspect-square bg-gradient-to-br from-primary/20 to-primary/30 flex items-center justify-center">
+            <Plus className="w-12 h-12 text-primary group-hover:scale-110 transition-transform" />
           </div>
         </CardContent>
       </Card>
       <div className="mt-2 text-center">
-        <p className="text-sm font-medium text-gray-900 group-hover:text-pink-600">
+        <p className="text-sm font-medium text-foreground group-hover:text-primary">
           New Playlist
         </p>
-        <p className="text-xs text-gray-500">Create a new playlist</p>
+        <p className="text-xs text-muted-foreground">Create a new playlist</p>
       </div>
     </div>
   );
@@ -186,16 +186,16 @@ const Playlists = () => {
     >
       <Card className="aspect-square hover:shadow-lg transition-shadow">
         <CardContent className="p-0 h-full">
-          <div className="aspect-square bg-gradient-to-br from-pink-200 to-rose-200 flex items-center justify-center">
-            <Heart className="w-12 h-12 text-pink-600 fill-pink-600 group-hover:scale-110 transition-transform" />
+          <div className="aspect-square bg-gradient-to-br from-primary/20 to-primary/30 flex items-center justify-center">
+            <Heart className="w-12 h-12 text-primary fill-primary group-hover:scale-110 transition-transform" />
           </div>
         </CardContent>
       </Card>
       <div className="mt-2 text-center">
-        <p className="text-sm font-medium text-gray-900 group-hover:text-pink-600">
+        <p className="text-sm font-medium text-foreground group-hover:text-primary">
           Favourites
         </p>
-        <p className="text-xs text-gray-500">Your favourite tracks</p>
+        <p className="text-xs text-muted-foreground">Your favourite tracks</p>
       </div>
     </div>
   );
@@ -208,23 +208,23 @@ const Playlists = () => {
     >
       <Card className="aspect-square hover:shadow-lg transition-shadow">
         <CardContent className="p-0 h-full">
-          <div className="aspect-square bg-gradient-to-br from-pink-200 to-rose-200 flex items-center justify-center">
-            <Download className="w-12 h-12 text-pink-600 group-hover:scale-110 transition-transform" />
+          <div className="aspect-square bg-gradient-to-br from-primary/20 to-primary/30 flex items-center justify-center">
+            <Download className="w-12 h-12 text-primary group-hover:scale-110 transition-transform" />
           </div>
         </CardContent>
       </Card>
       <div className="mt-2 text-center">
-        <p className="text-sm font-medium text-gray-900 group-hover:text-pink-600">
+        <p className="text-sm font-medium text-foreground group-hover:text-primary">
           Downloaded Songs
         </p>
-        <p className="text-xs text-gray-500">Tracks saved offline</p>
+        <p className="text-xs text-muted-foreground">Tracks saved offline</p>
       </div>
     </div>
   );
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-gray-50">
+      <div className="min-h-screen bg-background">
         <Sidebar activeSection="playlists" />
         <div className="ml-64 p-6">
           <div className="max-w-none mx-auto">
@@ -237,14 +237,16 @@ const Playlists = () => {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-background">
       <Sidebar activeSection="playlists" />
       <div className="ml-64 p-6 pb-28">
         <div className="max-w-none mx-auto">
           {/* Header */}
           <div className="mb-8">
-            <h1 className="text-3xl font-bold text-gray-900 mb-4">Playlists</h1>
-            <p className="text-gray-600 mb-6">
+            <h1 className="text-3xl font-bold text-foreground mb-4">
+              Playlists
+            </h1>
+            <p className="text-muted-foreground mb-6">
               {filteredPlaylists.length}{" "}
               {filteredPlaylists.length === 1 ? "playlist" : "playlists"}
               {filteredPlaylists.length > PLAYLISTS_PER_PAGE && (
@@ -259,7 +261,7 @@ const Playlists = () => {
 
             {/* Search */}
             <div className="relative max-w-md">
-              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
+              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground w-4 h-4" />
               <Input
                 placeholder="Search playlists..."
                 value={searchQuery}
@@ -271,7 +273,7 @@ const Playlists = () => {
                   else params.delete("q");
                   setSearchParams(params, { replace: false });
                 }}
-                className="pl-10 bg-white border-gray-200"
+                className="pl-10 bg-background border-border"
               />
             </div>
           </div>
@@ -317,7 +319,9 @@ const Playlists = () => {
                     {getPageNumbers.map((page, index) => (
                       <React.Fragment key={index}>
                         {page === "..." ? (
-                          <span className="px-3 py-2 text-gray-500">...</span>
+                          <span className="px-3 py-2 text-muted-foreground">
+                            ...
+                          </span>
                         ) : (
                           <Button
                             variant={
@@ -350,11 +354,11 @@ const Playlists = () => {
           ) : searchQuery ? (
             <div className="flex items-center justify-center h-64">
               <div className="text-center">
-                <ListMusic className="w-16 h-16 text-gray-400 mx-auto mb-4" />
-                <h2 className="text-xl font-semibold text-gray-900 mb-2">
+                <ListMusic className="w-16 h-16 text-muted-foreground mx-auto mb-4" />
+                <h2 className="text-xl font-semibold text-foreground mb-2">
                   No playlists found
                 </h2>
-                <p className="text-gray-600">
+                <p className="text-muted-foreground">
                   Try adjusting your search to find more playlists.
                 </p>
               </div>
@@ -362,11 +366,11 @@ const Playlists = () => {
           ) : (
             <div className="flex items-center justify-center h-64">
               <div className="text-center">
-                <Music className="w-16 h-16 text-gray-400 mx-auto mb-4" />
-                <h2 className="text-xl font-semibold text-gray-900 mb-2">
+                <Music className="w-16 h-16 text-muted-foreground mx-auto mb-4" />
+                <h2 className="text-xl font-semibold text-foreground mb-2">
                   No playlists available
                 </h2>
-                <p className="text-gray-600">
+                <p className="text-muted-foreground">
                   No playlists were found in your music library.
                 </p>
               </div>

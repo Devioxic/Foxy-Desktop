@@ -364,11 +364,11 @@ const MusicPlayer: React.FC<MusicPlayerProps> = ({
   const albumArt = getAlbumArt(currentTrack);
 
   return (
-    <div className="fixed bottom-0 left-64 right-0 h-[81px] bg-white border-t shadow-sm z-30">
+    <div className="fixed bottom-0 left-64 right-0 h-[81px] bg-card border-t border-border shadow-sm z-30">
       <div className="grid grid-cols-[auto_1fr_auto] items-center h-full px-2 relative gap-6">
         {/* Track Info */}
         <div className="flex items-center gap-3 flex-shrink-0 w-96 overflow-hidden">
-          <div className="w-16 h-16 rounded-md overflow-hidden bg-gray-100 shadow-sm flex-shrink-0">
+          <div className="w-16 h-16 rounded-md overflow-hidden bg-muted shadow-sm flex-shrink-0">
             {albumArt ? (
               <img
                 src={albumArt}
@@ -377,14 +377,14 @@ const MusicPlayer: React.FC<MusicPlayerProps> = ({
               />
             ) : (
               <div className="w-full h-full flex items-center justify-center">
-                <Music className="w-6 h-6 text-gray-400" />
+                <Music className="w-6 h-6 text-muted-foreground" />
               </div>
             )}
           </div>
           <div className="flex items-center gap-2 min-w-0">
             <div className="flex flex-col flex-1 min-w-0">
               <button
-                className="font-medium text-gray-800 text-sm w-full truncate whitespace-nowrap hover:text-pink-600 hover:underline transition-colors text-left"
+                className="font-medium text-card-foreground text-sm w-full truncate whitespace-nowrap hover:text-primary hover:underline transition-colors text-left"
                 onClick={() => {
                   const albumName = currentTrack.Album || "Unknown Album";
                   const artistName =
@@ -396,7 +396,7 @@ const MusicPlayer: React.FC<MusicPlayerProps> = ({
                 {currentTrack.Name}
               </button>
               <button
-                className="text-xs text-gray-500 hover:text-pink-600 hover:underline transition-colors text-left truncate w-full"
+                className="text-xs text-muted-foreground hover:text-primary hover:underline transition-colors text-left truncate w-full"
                 onClick={() => {
                   const artistName =
                     currentTrack.AlbumArtist ||
@@ -420,7 +420,7 @@ const MusicPlayer: React.FC<MusicPlayerProps> = ({
                 <Button
                   variant="ghost"
                   size="sm"
-                  className="p-1 text-gray-500 hover:text-pink-600 hover:bg-gray-100 cursor-pointer"
+                  className="p-1 text-muted-foreground hover:text-primary hover:bg-accent cursor-pointer"
                   onClick={toggleCurrentTrackFavorite}
                   disabled={favoriteLoading}
                   title={
@@ -428,13 +428,13 @@ const MusicPlayer: React.FC<MusicPlayerProps> = ({
                   }
                 >
                   {favoriteLoading ? (
-                    <Loader2 className="w-4 h-4 animate-spin text-gray-400" />
+                    <Loader2 className="w-4 h-4 animate-spin text-muted-foreground" />
                   ) : (
                     <Star
                       className={`w-4 h-4 transition-colors ${
                         isFavorite
-                          ? "text-pink-600 fill-pink-600"
-                          : "text-gray-500"
+                          ? "text-primary fill-primary"
+                          : "text-muted-foreground"
                       }`}
                     />
                   )}
@@ -443,7 +443,7 @@ const MusicPlayer: React.FC<MusicPlayerProps> = ({
                   variant="ghost"
                   size="sm"
                   onClick={() => setShowAddToPlaylist(true)}
-                  className="p-1 text-gray-500 hover:text-pink-600 hover:bg-gray-100 cursor-pointer"
+                  className="p-1 text-muted-foreground hover:text-primary hover:bg-accent cursor-pointer"
                 >
                   <Plus className="w-4 h-4" />
                 </Button>
@@ -460,10 +460,10 @@ const MusicPlayer: React.FC<MusicPlayerProps> = ({
               variant="ghost"
               size="sm"
               onClick={toggleShuffle}
-              className={`p-1.5 hover:bg-gray-100 ${
+              className={`p-1.5 hover:bg-accent ${
                 isShuffled
-                  ? "text-pink-600 hover:text-pink-700"
-                  : "text-gray-600 hover:text-gray-800"
+                  ? "text-primary hover:text-primary/80"
+                  : "text-muted-foreground hover:text-foreground"
               }`}
               title={isShuffled ? "Turn off shuffle" : "Turn on shuffle"}
             >
@@ -473,27 +473,27 @@ const MusicPlayer: React.FC<MusicPlayerProps> = ({
               variant="ghost"
               size="sm"
               onClick={previous}
-              className="p-1.5 text-gray-600 hover:text-gray-800 hover:bg-gray-100"
+              className="p-1.5 text-muted-foreground hover:text-foreground hover:bg-accent"
               title="Previous track"
             >
               <SkipBack className="w-4 h-4" />
             </Button>
             <Button
               onClick={handlePlayPause}
-              className="rounded-full w-9 h-9 bg-gray-800 hover:bg-gray-700 shadow-sm p-0 flex items-center justify-center"
+              className="rounded-full w-9 h-9 bg-primary hover:bg-primary/90 shadow-sm p-0 flex items-center justify-center"
               title={isPlaying ? "Pause" : isPaused ? "Resume" : "Play"}
             >
               {isPlaying ? (
-                <Pause className="w-4 h-4 text-white" />
+                <Pause className="w-4 h-4 text-primary-foreground" />
               ) : (
-                <Play className="w-4 h-4 text-white ml-0.5" />
+                <Play className="w-4 h-4 text-primary-foreground ml-0.5" />
               )}
             </Button>
             <Button
               variant="ghost"
               size="sm"
               onClick={next}
-              className="p-1.5 text-gray-600 hover:text-gray-800 hover:bg-gray-100"
+              className="p-1.5 text-muted-foreground hover:text-foreground hover:bg-accent"
               title="Next track"
             >
               <SkipForward className="w-4 h-4" />
@@ -502,10 +502,10 @@ const MusicPlayer: React.FC<MusicPlayerProps> = ({
               variant="ghost"
               size="sm"
               onClick={toggleRepeat}
-              className={`p-1.5 hover:bg-gray-100 ${
+              className={`p-1.5 hover:bg-accent ${
                 repeatMode !== "off"
-                  ? "text-pink-600 hover:text-pink-700"
-                  : "text-gray-600 hover:text-gray-800"
+                  ? "text-primary hover:text-primary/80"
+                  : "text-muted-foreground hover:text-foreground"
               }`}
               title={
                 repeatMode === "off"
@@ -525,7 +525,7 @@ const MusicPlayer: React.FC<MusicPlayerProps> = ({
 
           {/* Progress Bar */}
           <div className="flex items-center space-x-2 w-full">
-            <span className="text-xs text-gray-500 w-8 text-right">
+            <span className="text-xs text-muted-foreground w-8 text-right">
               {formatTime(currentTime)}
             </span>
             <div className="group flex-1 relative py-2">
@@ -537,7 +537,7 @@ const MusicPlayer: React.FC<MusicPlayerProps> = ({
                 className="flex-1"
               />
             </div>
-            <span className="text-xs text-gray-500 w-8">
+            <span className="text-xs text-muted-foreground w-8">
               {formatTime(duration)}
             </span>
           </div>
@@ -547,11 +547,11 @@ const MusicPlayer: React.FC<MusicPlayerProps> = ({
         <div className="flex items-center space-x-2 flex-shrink-0 w-80 justify-end">
           {qualityInfo && (
             <div className="hidden xl:flex flex-col items-end mr-2 leading-tight">
-              <span className="text-[10px] uppercase tracking-wide text-gray-400">
+              <span className="text-[10px] uppercase tracking-wide text-muted-foreground">
                 {qualityInfo.source || "Stream"}
               </span>
               <span
-                className="text-xs text-gray-600 max-w-[140px] truncate"
+                className="text-xs text-foreground max-w-[140px] truncate"
                 title={qualityInfo.label}
               >
                 {qualityInfo.label}
@@ -562,7 +562,7 @@ const MusicPlayer: React.FC<MusicPlayerProps> = ({
             variant="ghost"
             size="sm"
             onClick={() => setVolume(volume > 0 ? 0 : 1)}
-            className="p-1 text-gray-500 hover:text-gray-800 hover:bg-gray-100"
+            className="p-1 text-muted-foreground hover:text-foreground hover:bg-accent"
           >
             {volume === 0 ? (
               <VolumeX className="w-4 h-4" />
@@ -583,10 +583,10 @@ const MusicPlayer: React.FC<MusicPlayerProps> = ({
             variant="ghost"
             size="sm"
             onClick={() => toggleLyrics(!showLyrics)}
-            className={`p-1 hover:bg-gray-100 ${
+            className={`p-1 hover:bg-accent ${
               showLyrics
-                ? "text-pink-600 hover:text-pink-700"
-                : "text-gray-500 hover:text-gray-800"
+                ? "text-primary hover:text-primary/80"
+                : "text-muted-foreground hover:text-foreground"
             }`}
             disabled={!currentTrack}
             title={showLyrics ? "Hide lyrics" : "Show lyrics"}
@@ -598,7 +598,7 @@ const MusicPlayer: React.FC<MusicPlayerProps> = ({
               <Button
                 variant="ghost"
                 size="sm"
-                className="p-1 text-gray-500 hover:text-gray-800 hover:bg-gray-100"
+                className="p-1 text-muted-foreground hover:text-foreground hover:bg-accent"
                 title="Show queue"
               >
                 <List className="w-4 h-4" />
@@ -616,8 +616,8 @@ const MusicPlayer: React.FC<MusicPlayerProps> = ({
               <div className="mt-6 h-[calc(100vh-140px)] overflow-y-auto">
                 <div className="space-y-2 pr-2">
                   {queue.length === 0 ? (
-                    <div className="text-center py-8 text-gray-500">
-                      <Music className="w-12 h-12 mx-auto mb-3 opacity-50" />
+                    <div className="text-center py-8 text-muted-foreground">
+                      <Music className="w-12 h-12 mx-auto mb-3 opacity-50 text-muted-foreground" />
                       <p>No songs in queue</p>
                       <p className="text-sm">
                         Start playing music to see your queue here
@@ -634,14 +634,14 @@ const MusicPlayer: React.FC<MusicPlayerProps> = ({
                         onClick={() => handleTrackClick(index)}
                         className={`group flex items-center gap-3 p-3 rounded-lg transition-colors cursor-pointer select-none ${
                           index === currentIndex
-                            ? "bg-pink-50 border border-pink-200"
-                            : "hover:bg-gray-50"
+                            ? "bg-primary/10 border border-primary/20"
+                            : "hover:bg-accent"
                         } ${draggedIndex === index ? "opacity-50" : ""}`}
                       >
                         <div className="cursor-grab active:cursor-grabbing flex-shrink-0">
-                          <GripVertical className="w-4 h-4 text-gray-400" />
+                          <GripVertical className="w-4 h-4 text-muted-foreground" />
                         </div>
-                        <div className="w-10 h-10 rounded overflow-hidden bg-gray-100 flex-shrink-0">
+                        <div className="w-10 h-10 rounded overflow-hidden bg-muted flex-shrink-0">
                           {track.ImageTags?.Primary && serverAddress ? (
                             <img
                               src={`${serverAddress}/Items/${track.Id}/Images/Primary?maxWidth=40&quality=90`}
@@ -650,7 +650,7 @@ const MusicPlayer: React.FC<MusicPlayerProps> = ({
                             />
                           ) : (
                             <div className="w-full h-full flex items-center justify-center">
-                              <Music className="w-4 h-4 text-gray-400" />
+                              <Music className="w-4 h-4 text-muted-foreground" />
                             </div>
                           )}
                         </div>
@@ -658,13 +658,13 @@ const MusicPlayer: React.FC<MusicPlayerProps> = ({
                           <p
                             className={`text-sm font-medium truncate ${
                               index === currentIndex
-                                ? "text-pink-700"
-                                : "text-gray-900"
+                                ? "text-primary"
+                                : "text-card-foreground"
                             }`}
                           >
                             {track.Name}
                           </p>
-                          <p className="text-xs text-gray-500 truncate">
+                          <p className="text-xs text-muted-foreground truncate">
                             {track.AlbumArtist ||
                               track.Artist ||
                               "Unknown Artist"}
@@ -689,7 +689,7 @@ const MusicPlayer: React.FC<MusicPlayerProps> = ({
                               e.stopPropagation();
                               removeFromQueue(index);
                             }}
-                            className="p-1 text-gray-400 hover:text-red-600 hover:bg-red-50 opacity-0 group-hover:opacity-100 transition-opacity"
+                            className="p-1 text-muted-foreground hover:text-destructive hover:bg-destructive/10 opacity-0 group-hover:opacity-100 transition-opacity"
                           >
                             <X className="w-3 h-3" />
                           </Button>

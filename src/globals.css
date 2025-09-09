@@ -27,11 +27,12 @@
   }
 
   .dark {
-    --background: 224 71.4% 4.1%;
+    /* #1A1A1A */
+    --background: 0 0% 10%;
     --foreground: 210 20% 98%;
-    --card: 224 71.4% 4.1%;
+    --card: 0 0% 10%;
     --card-foreground: 210 20% 98%;
-    --popover: 224 71.4% 4.1%;
+    --popover: 0 0% 10%;
     --popover-foreground: 210 20% 98%;
     --primary: 330 81% 65%;
     --primary-foreground: 210 20% 98%;
@@ -132,7 +133,7 @@
 
   /* Input component standards */
   .input {
-    @apply w-full border border-neutral-300 bg-white rounded-lg shadow-sm focus:outline-none focus:border-transparent transition-all;
+    @apply w-full border border-border bg-background rounded-lg shadow-sm focus:outline-none focus:border-transparent transition-all;
     &:focus {
       box-shadow: 0 0 0 2px hsl(var(--primary));
     }
@@ -152,7 +153,7 @@
 
   /* Card component standards */
   .card {
-    @apply bg-white border border-neutral-200 rounded-xl shadow-sm overflow-hidden;
+    @apply bg-card border border-border rounded-xl shadow-sm overflow-hidden;
   }
 
   /* Grid system */
@@ -170,11 +171,11 @@
   }
 
   .music-player-slider .absolute {
-    @apply h-1 bg-gray-300 group-hover:bg-pink-300 transition-colors;
+    @apply h-1 bg-muted group-hover:bg-primary/30 transition-colors;
   }
 
   .music-player-slider [data-orientation="horizontal"] > span {
-    @apply opacity-0 group-hover:opacity-100 transition-opacity duration-200 bg-gray-700 border border-gray-200 group-hover:bg-pink-600 group-hover:border-pink-400;
+    @apply opacity-0 group-hover:opacity-100 transition-opacity duration-200 bg-foreground border border-border group-hover:bg-primary group-hover:border-primary/40;
   }
 }
 
@@ -184,17 +185,17 @@
 }
 
 .lyrics-scroll::-webkit-scrollbar-track {
-  background: #f1f5f9;
+  background: hsl(var(--muted));
   border-radius: 3px;
 }
 
 .lyrics-scroll::-webkit-scrollbar-thumb {
-  background: #cbd5e1;
+  background: hsl(var(--muted-foreground));
   border-radius: 10px;
 }
 
 .lyrics-scroll::-webkit-scrollbar-thumb:hover {
-  background: #94a3b8;
+  background: hsl(var(--foreground));
 }
 
 /* Enhanced shimmer animation for loading skeletons */

@@ -61,7 +61,7 @@ const UserProfile = () => {
   };
 
   return (
-    <div className="p-4 h-20 bg-white">
+    <div className="p-4 h-20 bg-card">
       <div className="flex items-center space-x-3">
         <Avatar className="w-12 h-12">
           {currentUser?.PrimaryImageTag ? (
@@ -70,17 +70,17 @@ const UserProfile = () => {
               alt={currentUser.Name || "User"}
             />
           ) : null}
-          <AvatarFallback className="bg-pink-100 text-pink-700">
+          <AvatarFallback className="bg-primary/10 text-primary">
             {currentUser?.Name?.charAt(0)?.toUpperCase() || (
               <User className="w-4 h-4" />
             )}
           </AvatarFallback>
         </Avatar>
         <div className="flex-1 min-w-0">
-          <p className="text-sm font-medium text-gray-900 truncate">
+          <p className="text-sm font-medium text-card-foreground truncate">
             {currentUser?.Name || "User"}
           </p>
-          <p className="text-xs text-gray-500 truncate">
+          <p className="text-xs text-muted-foreground truncate">
             {serverInfo?.ServerName || authData.serverAddress}
           </p>
         </div>

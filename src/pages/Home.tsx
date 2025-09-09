@@ -16,7 +16,7 @@ import { getAlbumItems } from "@/lib/jellyfin";
 import AlbumCard from "@/components/AlbumCard";
 import LoadingSkeleton from "@/components/LoadingSkeleton";
 
-const Dashboard = () => {
+const Home = () => {
   const navigate = useNavigate();
   const { playNow, addToQueue, playQueue } = useMusicPlayer();
   const [recentlyPlayed, setRecentlyPlayed] = useState<any[]>([]);
@@ -71,7 +71,7 @@ const Dashboard = () => {
   ) => (
     <div className="mb-8">
       <div className="flex items-center justify-between mb-4">
-        <h2 className="text-xl font-bold text-gray-900">{title}</h2>
+        <h2 className="text-xl font-bold text-foreground">{title}</h2>
       </div>
       <div className="flex flex-wrap justify-start gap-6">
         {(showAll ? items : items.slice(0, 25)).map((item) => (
@@ -82,7 +82,7 @@ const Dashboard = () => {
   );
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-background text-foreground">
       {/* Sidebar */}
       <Sidebar activeSection="home" />
 
@@ -92,7 +92,7 @@ const Dashboard = () => {
         {!showLyrics && (
           <div className="max-w-none mx-auto p-6 pb-28">
             {loading ? (
-              <LoadingSkeleton type="dashboard" />
+              <LoadingSkeleton type="home" />
             ) : (
               <div className="space-y-8">
                 {/* Quick Access Grid */}
@@ -101,7 +101,7 @@ const Dashboard = () => {
                     {recentlyPlayed.slice(0, 6).map((item) => (
                       <Card
                         key={item.Id}
-                        className="group cursor-pointer hover:shadow-md transition-shadow overflow-hidden"
+                        className="group cursor-pointer hover:shadow-md transition-shadow overflow-hidden bg-card/50 text-card-foreground border border-border dark:border-0 dark:bg-muted/30"
                         style={{ boxSizing: "content-box" }}
                         onClick={() => navigate(`/album/${item.Id}`)}
                       >
@@ -115,14 +115,14 @@ const Dashboard = () => {
                                   className="w-20 h-20 object-cover rounded-md flex-shrink-0"
                                 />
                               ) : (
-                                <div className="w-20 h-20 flex items-center justify-center bg-gradient-to-br from-pink-200 to-rose-200 rounded-md flex-shrink-0">
-                                  <Music className="w-8 h-8 text-pink-400" />
+                                <div className="w-20 h-20 flex items-center justify-center bg-accent rounded-md flex-shrink-0">
+                                  <Music className="w-8 h-8 text-accent-foreground opacity-80" />
                                 </div>
                               )}
                             </div>
                             <div className="flex-1 p-4 min-w-0">
                               <h3
-                                className="font-medium text-gray-900 text-sm leading-tight mb-1 overflow-hidden"
+                                className="font-medium text-foreground text-sm leading-tight mb-1 overflow-hidden"
                                 style={{
                                   display: "-webkit-box",
                                   WebkitLineClamp: 2,
@@ -131,7 +131,7 @@ const Dashboard = () => {
                               >
                                 {item.Name}
                               </h3>
-                              <p className="text-sm text-gray-600 truncate">
+                              <p className="text-sm text-muted-foreground truncate">
                                 {item.AlbumArtist || "Unknown Artist"}
                               </p>
                             </div>
@@ -154,7 +154,7 @@ const Dashboard = () => {
                                     logger.error("Failed to play album", err);
                                   }
                                 }}
-                                className="rounded-full w-10 h-10 bg-pink-600 hover:bg-pink-700"
+                                className="rounded-full w-10 h-10"
                               >
                                 <Play className="w-4 h-4 ml-0.5" />
                               </Button>
@@ -186,4 +186,4 @@ const Dashboard = () => {
   );
 };
 
-export default Dashboard;
+export default Home;

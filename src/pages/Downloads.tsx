@@ -83,17 +83,17 @@ const Downloads: React.FC = () => {
   // "/downloads/songs". This page focuses on downloaded collections.
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-background">
       <Sidebar activeSection="downloads" />
       <div className="ml-64 p-6 pb-28">
         <div className="flex items-center justify-between mb-6">
-          <h1 className="text-3xl font-bold text-gray-900">Downloads</h1>
+          <h1 className="text-3xl font-bold text-foreground">Downloads</h1>
         </div>
 
         {/* Downloaded Albums */}
         {albumItems.length > 0 && (
           <div className="mb-10">
-            <h2 className="text-xl font-semibold text-gray-900 mb-4">
+            <h2 className="text-xl font-semibold text-foreground mb-4">
               Downloaded Albums
             </h2>
             <div className="flex flex-wrap justify-start gap-4">
@@ -112,7 +112,7 @@ const Downloads: React.FC = () => {
         {/* Downloaded Playlists */}
         {playlistItems.length > 0 && (
           <div className="mb-10">
-            <h2 className="text-xl font-semibold text-gray-900 mb-4">
+            <h2 className="text-xl font-semibold text-foreground mb-4">
               Downloaded Playlists
             </h2>
             <div className="flex flex-wrap justify-start gap-4">
@@ -124,7 +124,7 @@ const Downloads: React.FC = () => {
         )}
 
         {albumItems.length === 0 && playlistItems.length === 0 ? (
-          <p className="text-gray-600">
+          <p className="text-muted-foreground">
             No downloaded albums or playlists yet.
           </p>
         ) : null}

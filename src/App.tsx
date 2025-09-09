@@ -14,11 +14,12 @@ import LoadingSkeleton from "@/components/LoadingSkeleton";
 import Sidebar from "@/components/Sidebar";
 import MusicPlayer from "@/components/MusicPlayer";
 import { Toaster } from "sonner"; // Global toast renderer
+import { ThemeProvider } from "next-themes";
 
 // Lazy load components
 const ServerAddressPage = React.lazy(() => import("@/pages/ServerAddressPage"));
 const LoginPage = React.lazy(() => import("@/pages/LoginPage"));
-const Dashboard = React.lazy(() => import("@/pages/Dashboard"));
+const Home = React.lazy(() => import("@/pages/Home"));
 const SearchPage = React.lazy(() => import("@/pages/SearchPage"));
 const Library = React.lazy(() => import("@/pages/Library"));
 const Artists = React.lazy(() => import("@/pages/Artists"));
@@ -47,7 +48,7 @@ const LayoutFallback: React.FC<{ activeSection: string; type: any }> = ({
   activeSection,
   type,
 }) => (
-  <div className="min-h-screen bg-gray-50">
+  <div className="min-h-screen bg-background">
     <Sidebar activeSection={activeSection} />
     <div className="ml-64 pb-28 p-6">
       <LoadingSkeleton type={type} />
@@ -104,11 +105,9 @@ const AppContent = () => {
             path="/home"
             element={
               <Suspense
-                fallback={
-                  <LayoutFallback activeSection="home" type="dashboard" />
-                }
+                fallback={<LayoutFallback activeSection="home" type="home" />}
               >
-                <Dashboard />
+                <Home />
               </Suspense>
             }
           />
@@ -116,9 +115,7 @@ const AppContent = () => {
             path="/search"
             element={
               <Suspense
-                fallback={
-                  <LayoutFallback activeSection="search" type="dashboard" />
-                }
+                fallback={<LayoutFallback activeSection="search" type="home" />}
               >
                 <SearchPage />
               </Suspense>
@@ -280,11 +277,18 @@ const AppContent = () => {
 
 const App = () => {
   return (
-    <MusicProvider>
-      <AppContent />
-      {/* Global Toaster for notifications */}
-      <Toaster richColors closeButton />
-    </MusicProvider>
+    <ThemeProvider
+      attribute="class"
+      defaultTheme="system"
+      enableSystem
+      disableTransitionOnChange
+    >
+      <MusicProvider>
+        <AppContent />
+        {/* Global Toaster for notifications */}
+        <Toaster richColors closeButton />
+      </MusicProvider>
+    </ThemeProvider>
   );
 };
 

@@ -161,7 +161,7 @@ const Albums = () => {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-gray-50">
+      <div className="min-h-screen bg-background">
         <Sidebar activeSection="albums" />
         <div className="ml-64 p-6">
           <LoadingSkeleton type="albums" />
@@ -172,14 +172,14 @@ const Albums = () => {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-background">
       <Sidebar activeSection="albums" />
       <div className="ml-64 pb-28">
         <div className="max-w-none mx-auto p-6">
           {/* Header */}
           <div className="mb-8">
-            <h1 className="text-3xl font-bold text-gray-900 mb-4">Albums</h1>
-            <p className="text-gray-600 mb-6">
+            <h1 className="text-3xl font-bold text-foreground mb-4">Albums</h1>
+            <p className="text-muted-foreground mb-6">
               {filteredAlbums.length}{" "}
               {filteredAlbums.length === 1 ? "album" : "albums"}
               {filteredAlbums.length > ALBUMS_PER_PAGE && (
@@ -194,7 +194,7 @@ const Albums = () => {
 
             {/* Search */}
             <div className="relative max-w-md">
-              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
+              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground w-4 h-4" />
               <Input
                 placeholder="Search albums and artists..."
                 value={searchQuery}
@@ -206,7 +206,7 @@ const Albums = () => {
                   else params.delete("q");
                   setSearchParams(params, { replace: false });
                 }}
-                className="pl-10 bg-white border-gray-200"
+                className="pl-10 bg-background border-border"
               />
             </div>
           </div>
@@ -247,7 +247,9 @@ const Albums = () => {
                     {getPageNumbers.map((page, index) => (
                       <React.Fragment key={index}>
                         {page === "..." ? (
-                          <span className="px-3 py-2 text-gray-500">...</span>
+                          <span className="px-3 py-2 text-muted-foreground">
+                            ...
+                          </span>
                         ) : (
                           <Button
                             variant={
@@ -295,11 +297,11 @@ const Albums = () => {
           ) : searchQuery ? (
             <div className="flex items-center justify-center h-64">
               <div className="text-center">
-                <Disc className="w-16 h-16 text-gray-400 mx-auto mb-4" />
-                <h2 className="text-xl font-semibold text-gray-900 mb-2">
+                <Disc className="w-16 h-16 text-muted-foreground mx-auto mb-4" />
+                <h2 className="text-xl font-semibold text-foreground mb-2">
                   No albums found
                 </h2>
-                <p className="text-gray-600">
+                <p className="text-muted-foreground">
                   Try adjusting your search to find more albums.
                 </p>
               </div>

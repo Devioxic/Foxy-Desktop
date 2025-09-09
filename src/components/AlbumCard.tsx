@@ -74,7 +74,7 @@ const AlbumCard: React.FC<AlbumCardProps> = ({
     <div className="cursor-pointer group w-48" onClick={handleCardClick}>
       <Card className="overflow-hidden shadow-sm hover:shadow-md transition-shadow w-full">
         <CardContent className="p-0">
-          <div className="aspect-square bg-gray-100">
+          <div className="aspect-square bg-muted">
             {getAlbumArt() ? (
               <BlurHashImage
                 src={getAlbumArt()!}
@@ -85,19 +85,19 @@ const AlbumCard: React.FC<AlbumCardProps> = ({
                 height={400}
               />
             ) : (
-              <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-pink-200 to-rose-200">
-                <Music className="w-8 h-8 text-pink-400" />
+              <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-primary/20 to-primary/30">
+                <Music className="w-8 h-8 text-primary/60" />
               </div>
             )}
           </div>
         </CardContent>
       </Card>
       <div className="mt-2 text-center">
-        <p className="text-sm font-medium text-gray-900 truncate group-hover:text-pink-600">
+        <p className="text-sm font-medium text-foreground truncate group-hover:text-primary">
           {item.Name}
         </p>
         {subtitle ? (
-          <p className="text-xs text-gray-500 truncate">{subtitle}</p>
+          <p className="text-xs text-muted-foreground truncate">{subtitle}</p>
         ) : null}
       </div>
     </div>
