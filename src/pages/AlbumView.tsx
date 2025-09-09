@@ -433,7 +433,7 @@ const AlbumView = () => {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-gray-50">
+      <div className="min-h-screen bg-background">
         <Sidebar
           activeSection={activeSection}
           onSectionChange={setActiveSection}
@@ -453,18 +453,18 @@ const AlbumView = () => {
 
   if (!albumInfo) {
     return (
-      <div className="min-h-screen bg-gray-50">
+      <div className="min-h-screen bg-background">
         <Sidebar
           activeSection={activeSection}
           onSectionChange={setActiveSection}
         />
         <div className="ml-64 flex items-center justify-center h-screen">
           <div className="text-center">
-            <Music className="w-16 h-16 text-gray-400 mx-auto mb-4" />
-            <h2 className="text-xl font-semibold text-gray-900 mb-2">
+            <Music className="w-16 h-16 text-muted-foreground mx-auto mb-4" />
+            <h2 className="text-xl font-semibold text-foreground mb-2">
               Album not found
             </h2>
-            <p className="text-gray-600 mb-4">
+            <p className="text-muted-foreground mb-4">
               The album you're looking for doesn't exist.
             </p>
             <Button onClick={() => navigate(-1)}>Go Back</Button>
@@ -475,7 +475,7 @@ const AlbumView = () => {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-background">
       <Sidebar
         activeSection={activeSection}
         onSectionChange={setActiveSection}
@@ -492,7 +492,7 @@ const AlbumView = () => {
             <div className="flex flex-col md:flex-row gap-8 mb-8">
               {/* Album Artwork */}
               <div className="flex-shrink-0">
-                <div className="w-64 h-64 rounded-xl overflow-hidden bg-gradient-to-br from-gray-100 to-gray-200 shadow-lg">
+                <div className="w-64 h-64 rounded-xl overflow-hidden bg-gradient-to-br from-muted to-muted/50 shadow-lg">
                   {getAlbumArt() ? (
                     <img
                       src={getAlbumArt() || undefined}
@@ -501,7 +501,7 @@ const AlbumView = () => {
                     />
                   ) : (
                     <div className="w-full h-full flex items-center justify-center">
-                      <Music className="w-16 h-16 text-gray-400" />
+                      <Music className="w-16 h-16 text-muted-foreground" />
                     </div>
                   )}
                 </div>
@@ -510,11 +510,11 @@ const AlbumView = () => {
               {/* Album Details */}
               <div className="flex-1 space-y-4">
                 <div>
-                  <h2 className="text-4xl font-bold text-gray-900 mb-1">
+                  <h2 className="text-4xl font-bold text-foreground mb-1">
                     {albumInfo.Name || "Unknown Album"}
                   </h2>
                   <button
-                    className="inline-flex items-center gap-1 text-sm text-gray-700 hover:text-pink-600 hover:underline cursor-pointer transition-colors"
+                    className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-primary hover:underline cursor-pointer transition-colors"
                     onClick={() => handleArtistClick(albumArtistName)}
                   >
                     <User2 size={14} />
@@ -522,7 +522,7 @@ const AlbumView = () => {
                   </button>
                 </div>
 
-                <div className="flex flex-wrap items-center gap-4 text-sm text-gray-600">
+                <div className="flex flex-wrap items-center gap-4 text-sm text-muted-foreground">
                   {albumInfo.ProductionYear && (
                     <span>{albumInfo.ProductionYear}</span>
                   )}
@@ -552,7 +552,7 @@ const AlbumView = () => {
 
                 {albumInfo.Overview && (
                   <div className="space-y-2">
-                    <p className="text-gray-700 max-w-2xl">
+                    <p className="text-muted-foreground max-w-2xl">
                       {showFullDescription
                         ? albumInfo.Overview
                         : albumInfo.Overview.length > 200
@@ -564,7 +564,7 @@ const AlbumView = () => {
                         onClick={() =>
                           setShowFullDescription(!showFullDescription)
                         }
-                        className="text-pink-600 hover:text-pink-700 text-sm font-medium transition-colors"
+                        className="text-primary hover:text-primary/80 text-sm font-medium transition-colors"
                       >
                         {showFullDescription ? "Show less" : "Show more"}
                       </button>
@@ -596,7 +596,7 @@ const AlbumView = () => {
                     size="sm"
                     onClick={toggleAlbumFavorite}
                     disabled={favoriteLoading[albumInfo.Id || ""]}
-                    className="p-1 text-gray-600 hover:text-pink-600 hover:bg-gray-100"
+                    className="p-1 text-muted-foreground hover:text-primary hover:bg-accent"
                     title={
                       isAlbumFavorite
                         ? "Remove from favourites"
@@ -604,13 +604,13 @@ const AlbumView = () => {
                     }
                   >
                     {favoriteLoading[albumInfo.Id || ""] ? (
-                      <Loader2 className="w-4 h-4 animate-spin text-gray-400" />
+                      <Loader2 className="w-4 h-4 animate-spin text-muted-foreground" />
                     ) : (
                       <Star
                         className={`w-4 h-4 transition-colors ${
                           isAlbumFavorite
-                            ? "text-pink-600 fill-pink-600"
-                            : "text-gray-600"
+                            ? "text-primary fill-primary"
+                            : "text-muted-foreground"
                         }`}
                       />
                     )}
@@ -622,15 +622,17 @@ const AlbumView = () => {
                     size="sm"
                     onClick={handleToggleDownload}
                     disabled={downloading}
-                    className="p-1 text-gray-600 hover:text-pink-600 hover:bg-gray-100"
+                    className="p-1 text-muted-foreground hover:text-primary hover:bg-accent"
                     title={isDownloaded ? "Remove download" : "Download"}
                   >
                     {downloading ? (
-                      <Loader2 className="w-4 h-4 animate-spin text-gray-400" />
+                      <Loader2 className="w-4 h-4 animate-spin text-muted-foreground" />
                     ) : (
                       <Download
                         className={`w-4 h-4 ${
-                          isDownloaded ? "text-pink-600" : "text-gray-600"
+                          isDownloaded
+                            ? "text-primary"
+                            : "text-muted-foreground"
                         }`}
                       />
                     )}
@@ -645,7 +647,7 @@ const AlbumView = () => {
                         <Button
                           variant="ghost"
                           size="sm"
-                          className="p-1 text-gray-600 hover:text-pink-600 hover:bg-gray-100"
+                          className="p-1 text-muted-foreground hover:text-primary hover:bg-accent"
                           onClick={(e) => e.stopPropagation()}
                           aria-label="Album options"
                         >
@@ -660,7 +662,7 @@ const AlbumView = () => {
                             <Star
                               className={`w-4 h-4 ${
                                 isAlbumFavorite
-                                  ? "text-pink-600 fill-pink-600"
+                                  ? "text-primary fill-primary"
                                   : ""
                               }`}
                             />
@@ -682,7 +684,7 @@ const AlbumView = () => {
                             <Loader2 className="w-4 h-4 animate-spin" />
                           ) : (
                             <Download
-                              className={`w-4 h-4 ${isDownloaded ? "text-pink-600" : ""}`}
+                              className={`w-4 h-4 ${isDownloaded ? "text-primary" : ""}`}
                             />
                           ),
                           onSelect: handleToggleDownload,
@@ -711,9 +713,9 @@ const AlbumView = () => {
 
             {/* Track List - Hidden when lyrics are open */}
             {!showLyrics && (
-              <div className="bg-white rounded-xl shadow-sm border border-gray-200">
+              <div className="bg-card rounded-xl shadow-sm border border-border">
                 <div className="p-4">
-                  <h3 className="text-base font-semibold text-gray-900 mb-3">
+                  <h3 className="text-base font-semibold text-card-foreground mb-3">
                     Tracks
                   </h3>
 
@@ -751,18 +753,20 @@ const AlbumView = () => {
             {allPlaylists.map((pl: any) => (
               <button
                 key={pl.Id}
-                className="w-full text-left px-3 py-2 rounded hover:bg-gray-100 flex items-center justify-between"
+                className="w-full text-left px-3 py-2 rounded hover:bg-accent flex items-center justify-between"
                 onClick={() => handleAddAlbumToPlaylist(pl.Id)}
                 disabled={addingTo === pl.Id}
               >
                 <span className="truncate">{pl.Name}</span>
                 {addingTo === pl.Id && (
-                  <Loader2 className="w-4 h-4 animate-spin text-pink-600" />
+                  <Loader2 className="w-4 h-4 animate-spin text-primary" />
                 )}
               </button>
             ))}
             {allPlaylists.length === 0 && (
-              <div className="text-sm text-gray-500">No playlists found.</div>
+              <div className="text-sm text-muted-foreground">
+                No playlists found.
+              </div>
             )}
           </div>
           <DialogFooter>

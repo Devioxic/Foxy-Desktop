@@ -51,17 +51,17 @@ const ArtistView = () => {
 
   // Generate a consistent color gradient based on artist name
   const getArtistGradient = (artistName?: string) => {
-    if (!artistName) return "from-pink-200 to-rose-300";
+    if (!artistName) return "from-primary/20 to-primary/30";
 
     const gradients = [
-      "from-pink-200 to-rose-300",
-      "from-rose-200 to-pink-300",
-      "from-pink-100 to-rose-200",
-      "from-rose-100 to-pink-200",
-      "from-pink-300 to-rose-400",
-      "from-rose-300 to-pink-400",
-      "from-pink-200 to-rose-400",
-      "from-rose-200 to-pink-400",
+      "from-primary/20 to-primary/30",
+      "from-primary/15 to-primary/25",
+      "from-primary/10 to-primary/20",
+      "from-primary/25 to-primary/35",
+      "from-primary/30 to-primary/40",
+      "from-primary/20 to-primary/40",
+      "from-primary/15 to-primary/35",
+      "from-primary/25 to-primary/30",
     ];
 
     // Use character codes to get consistent gradient for same artist name
@@ -161,7 +161,7 @@ const ArtistView = () => {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-gray-50">
+      <div className="min-h-screen bg-background">
         <Sidebar activeSection="artists" />
         <div className="ml-64 p-6">
           <LoadingSkeleton type="artist" />
@@ -176,16 +176,16 @@ const ArtistView = () => {
 
   if (!artistInfo) {
     return (
-      <div className="min-h-screen bg-gray-50">
+      <div className="min-h-screen bg-background">
         <Sidebar activeSection="artists" />
         <div className="ml-64 p-6">
           <div className="flex items-center justify-center h-96">
             <div className="text-center">
-              <Users className="w-16 h-16 text-pink-400 mx-auto mb-4" />
-              <h2 className="text-xl font-semibold text-gray-900 mb-2">
+              <Users className="w-16 h-16 text-muted-foreground mx-auto mb-4" />
+              <h2 className="text-xl font-semibold text-foreground mb-2">
                 Artist not found
               </h2>
-              <p className="text-gray-600 mb-4">
+              <p className="text-muted-foreground mb-4">
                 The artist you're looking for doesn't exist.
               </p>
               <Button onClick={() => navigate(-1)}>Go Back</Button>
@@ -201,7 +201,7 @@ const ArtistView = () => {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-background">
       <Sidebar activeSection="artists" />
       <div className="ml-64 pb-28">
         <div className="max-w-none mx-auto p-6">
@@ -211,7 +211,7 @@ const ArtistView = () => {
           {/* Artist Info */}
           <div className="flex flex-col md:flex-row gap-8 mb-8">
             <div className="flex-shrink-0">
-              <div className="w-64 h-64 rounded-full overflow-hidden bg-gradient-to-br from-pink-100 to-rose-200 shadow-lg">
+              <div className="w-64 h-64 rounded-full overflow-hidden bg-gradient-to-br from-muted to-muted/50 shadow-lg">
                 {getArtistImage() ? (
                   <img
                     src={getArtistImage()!}
@@ -224,18 +224,18 @@ const ArtistView = () => {
                       artistInfo.Name
                     )}`}
                   >
-                    <User className="w-24 h-24 text-pink-600" />
+                    <User className="w-24 h-24 text-primary" />
                   </div>
                 )}
               </div>
             </div>
             <div className="flex-1 space-y-4 self-center">
-              <h2 className="text-5xl font-bold text-gray-900 mb-1">
+              <h2 className="text-5xl font-bold text-foreground mb-1">
                 {artistInfo.Name}
               </h2>
               {artistInfo.Overview && (
                 <div className="space-y-2">
-                  <p className="text-gray-700 max-w-2xl">
+                  <p className="text-muted-foreground max-w-2xl">
                     {showFullDescription
                       ? artistInfo.Overview
                       : artistInfo.Overview.length > 200
@@ -247,7 +247,7 @@ const ArtistView = () => {
                       onClick={() =>
                         setShowFullDescription(!showFullDescription)
                       }
-                      className="text-pink-600 hover:text-pink-700 text-sm font-medium transition-colors"
+                      className="text-primary hover:text-primary/80 text-sm font-medium transition-colors"
                     >
                       {showFullDescription ? "Show less" : "Show more"}
                     </button>
@@ -257,7 +257,7 @@ const ArtistView = () => {
               <div className="flex items-center space-x-4 pt-4">
                 <Button
                   onClick={handlePlayAllTracks}
-                  className="bg-pink-600 hover:bg-pink-700 px-8"
+                  className="bg-primary hover:bg-primary/90 px-8"
                 >
                   <Play className="w-5 h-5 mr-2" />
                   Play
@@ -277,7 +277,7 @@ const ArtistView = () => {
           {/* Top Tracks - Hidden when lyrics are open */}
           {!showLyrics && (
             <div className="mb-12">
-              <h3 className="text-xl font-semibold text-gray-900 mb-4">
+              <h3 className="text-xl font-semibold text-foreground mb-4">
                 Popular Tracks
               </h3>
               <TrackList
@@ -299,7 +299,7 @@ const ArtistView = () => {
           {/* Albums - Hidden when lyrics are open */}
           {!showLyrics && (
             <div>
-              <h3 className="text-xl font-semibold text-gray-900 mb-4">
+              <h3 className="text-xl font-semibold text-foreground mb-4">
                 Albums
               </h3>
               <div className="flex flex-wrap justify-start gap-6">

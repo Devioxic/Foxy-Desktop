@@ -237,7 +237,7 @@ const FavouritePlaylistView = () => {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-background">
       <Sidebar activeSection="favourites" />
       <div className="ml-64 p-6 pb-28">
         {/* Back Button */}
@@ -247,23 +247,23 @@ const FavouritePlaylistView = () => {
         <div className="flex gap-8 mb-8">
           <div className="flex-shrink-0">
             <div className="w-64 h-64 rounded-lg shadow-lg overflow-hidden">
-              <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-pink-200 to-rose-200">
-                <Heart className="w-16 h-16 text-pink-600 fill-pink-600" />
+              <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-primary/20 to-primary/30">
+                <Heart className="w-16 h-16 text-primary fill-primary" />
               </div>
             </div>
           </div>
 
           <div className="flex-1 space-y-4">
             <div>
-              <h1 className="text-4xl font-bold text-gray-900 mb-4 leading-tight">
+              <h1 className="text-4xl font-bold text-foreground mb-4 leading-tight">
                 Favourites
               </h1>
-              <p className="text-gray-600 text-sm">
+              <p className="text-muted-foreground text-sm">
                 Your favourite tracks, all in one place
               </p>
             </div>
 
-            <div className="flex items-center gap-4 text-sm text-gray-600">
+            <div className="flex items-center gap-4 text-sm text-muted-foreground">
               <span>{tracks.length} tracks</span>
               {totalDuration > 0 && (
                 <>
@@ -278,7 +278,7 @@ const FavouritePlaylistView = () => {
               <Button
                 onClick={handlePlayAll}
                 disabled={tracks.length === 0}
-                className="bg-pink-600 hover:bg-pink-700 px-8"
+                className="bg-primary hover:bg-primary/90 px-8"
               >
                 <Play className="w-4 h-4 mr-2" />
                 Play
@@ -296,15 +296,15 @@ const FavouritePlaylistView = () => {
                 size="sm"
                 onClick={handleToggleDownload}
                 disabled={downloading}
-                className="p-1 text-gray-600 hover:text-pink-600 hover:bg-gray-100"
+                className="p-1 text-muted-foreground hover:text-primary hover:bg-accent"
                 title={isDownloaded ? "Remove download" : "Download"}
               >
                 {downloading ? (
-                  <Loader2 className="w-4 h-4 animate-spin text-gray-400" />
+                  <Loader2 className="w-4 h-4 animate-spin text-muted-foreground" />
                 ) : (
                   <Download
                     className={`w-4 h-4 ${
-                      isDownloaded ? "text-pink-600" : "text-gray-600"
+                      isDownloaded ? "text-primary" : "text-muted-foreground"
                     }`}
                   />
                 )}
@@ -319,11 +319,11 @@ const FavouritePlaylistView = () => {
             {tracks.length === 0 ? (
               <div className="flex items-center justify-center h-64">
                 <div className="text-center">
-                  <Heart className="w-16 h-16 text-gray-400 mx-auto mb-4" />
-                  <h2 className="text-xl font-semibold text-gray-900 mb-2">
+                  <Heart className="w-16 h-16 text-muted-foreground mx-auto mb-4" />
+                  <h2 className="text-xl font-semibold text-foreground mb-2">
                     No favourite tracks yet
                   </h2>
-                  <p className="text-gray-600 mb-4">
+                  <p className="text-muted-foreground mb-4">
                     Start adding tracks to your favourites by clicking the star
                     icon.
                   </p>
@@ -333,9 +333,9 @@ const FavouritePlaylistView = () => {
                 </div>
               </div>
             ) : (
-              <div className="bg-white rounded-xl shadow-sm border border-gray-200">
+              <div className="bg-card rounded-xl shadow-sm border border-border">
                 <div className="p-4">
-                  <h3 className="text-base font-semibold text-gray-900 mb-3">
+                  <h3 className="text-base font-semibold text-card-foreground mb-3">
                     Tracks
                   </h3>
 

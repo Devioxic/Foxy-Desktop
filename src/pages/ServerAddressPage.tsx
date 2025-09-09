@@ -138,7 +138,7 @@ const ServerAddressPage = () => {
       <div className="fixed inset-0 bg-gradient-to-br from-primary/25 via-primary/25 to-primary/30 backdrop-blur-3xl -z-10" />
       <div className="w-full max-w-lg space-y-8">
         <div className="text-center space-y-3">
-          <div className="mx-auto w-20 h-20 rounded-2xl bg-gradient-to-br from-primary/80 to-primary/80 flex items-center justify-center shadow-lg backdrop-blur-sm border border-background/50 overflow-hidden">
+          <div className="mx-auto w-20 h-20 rounded-2xl bg-gradient-to-br from-primary/20 to-primary/20 flex items-center justify-center shadow-lg backdrop-blur-sm overflow-hidden">
             <img src="./Foxy.svg" alt="Foxy" className="w-14 h-14" />
           </div>
           <h1 className="text-3xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-primary to-primary">

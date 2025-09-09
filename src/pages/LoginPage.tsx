@@ -132,7 +132,7 @@ const LoginPage = () => {
 
       <div className="w-full max-w-md">
         <div className="text-center mb-10">
-          <div className="bg-gradient-to-br from-primary/80 to-primary/80 w-20 h-20 rounded-2xl mx-auto flex items-center justify-center shadow-lg backdrop-blur-sm border border-background/50 mb-6">
+          <div className="mx-auto w-20 h-20 rounded-2xl bg-gradient-to-br from-primary/20 to-primary/20 flex items-center justify-center shadow-lg backdrop-blur-sm overflow-hidden">
             <img src="./Foxy.svg" alt="Foxy" className="w-14 h-14" />
           </div>
           <h1 className="text-3xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-primary to-primary mb-2">
