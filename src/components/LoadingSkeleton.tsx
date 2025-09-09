@@ -10,7 +10,7 @@ interface LoadingSkeletonProps {
     | "album"
     | "albums"
     | "albumDetail"
-    | "dashboard"
+    | "home"
     | "playlists"
     | "playlist"
     | "library";
@@ -80,7 +80,7 @@ const TrackListSkeleton: React.FC<{
   </div>
 );
 
-// MARK: - Dashboard skeletons
+// MARK: - Home skeletons
 const QuickAccessCardSkeleton: React.FC<{ count?: number }> = ({
   count = 6,
 }) => (
@@ -182,7 +182,7 @@ const LoadingSkeleton: React.FC<LoadingSkeletonProps> = ({ type }) => {
     );
   }
 
-  if (type === "dashboard") {
+  if (type === "home") {
     return (
       <div className="space-y-8">
         <div className="mb-8">

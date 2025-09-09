@@ -16,7 +16,7 @@ import { getAlbumItems } from "@/lib/jellyfin";
 import AlbumCard from "@/components/AlbumCard";
 import LoadingSkeleton from "@/components/LoadingSkeleton";
 
-const Dashboard = () => {
+const Home = () => {
   const navigate = useNavigate();
   const { playNow, addToQueue, playQueue } = useMusicPlayer();
   const [recentlyPlayed, setRecentlyPlayed] = useState<any[]>([]);
@@ -92,7 +92,7 @@ const Dashboard = () => {
         {!showLyrics && (
           <div className="max-w-none mx-auto p-6 pb-28">
             {loading ? (
-              <LoadingSkeleton type="dashboard" />
+              <LoadingSkeleton type="home" />
             ) : (
               <div className="space-y-8">
                 {/* Quick Access Grid */}
@@ -186,4 +186,4 @@ const Dashboard = () => {
   );
 };
 
-export default Dashboard;
+export default Home;

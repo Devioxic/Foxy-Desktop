@@ -17,7 +17,6 @@ export const ROUTES = {
   search: "/search",
   server: "/server",
   login: "/login",
-  dashboard: "/dashboard", // legacy support
 } as const;
 
 export const NAVIGATION_ITEMS = {

@@ -26,7 +26,7 @@ const Sidebar: React.FC<SidebarProps> = React.memo(
       if (activeSection) return activeSection;
 
       const path = location.pathname;
-      if (path === "/home" || path === "/dashboard") return "home";
+      if (path === "/home") return "home";
       if (path === "/library") return "library";
       if (path === "/search") return "search";
       if (path === "/artists" || path.startsWith("/artist/")) return "artists";

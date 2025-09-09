@@ -19,7 +19,7 @@ import { ThemeProvider } from "next-themes";
 // Lazy load components
 const ServerAddressPage = React.lazy(() => import("@/pages/ServerAddressPage"));
 const LoginPage = React.lazy(() => import("@/pages/LoginPage"));
-const Dashboard = React.lazy(() => import("@/pages/Dashboard"));
+const Home = React.lazy(() => import("@/pages/Home"));
 const SearchPage = React.lazy(() => import("@/pages/SearchPage"));
 const Library = React.lazy(() => import("@/pages/Library"));
 const Artists = React.lazy(() => import("@/pages/Artists"));
@@ -105,11 +105,9 @@ const AppContent = () => {
             path="/home"
             element={
               <Suspense
-                fallback={
-                  <LayoutFallback activeSection="home" type="dashboard" />
-                }
+                fallback={<LayoutFallback activeSection="home" type="home" />}
               >
-                <Dashboard />
+                <Home />
               </Suspense>
             }
           />
@@ -117,9 +115,7 @@ const AppContent = () => {
             path="/search"
             element={
               <Suspense
-                fallback={
-                  <LayoutFallback activeSection="search" type="dashboard" />
-                }
+                fallback={<LayoutFallback activeSection="search" type="home" />}
               >
                 <SearchPage />
               </Suspense>
