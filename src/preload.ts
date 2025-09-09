@@ -1,5 +1,10 @@
 import { contextBridge, ipcRenderer } from "electron";
+import type { TrackPresence } from "./rpc";
 
+contextBridge.exposeInMainWorld("rpc", {
+  update: (p: TrackPresence) => ipcRenderer.invoke("rpc:update", p),
+  clear: () => ipcRenderer.invoke("rpc:clear"),
+});
 // Expose a minimal, safe API if needed by the renderer
 contextBridge.exposeInMainWorld("electronAPI", {
   // Persist/load the sql.js database bytes to/from a file in userData

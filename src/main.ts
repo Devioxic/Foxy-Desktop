@@ -2,7 +2,7 @@ import { app, BrowserWindow, shell, ipcMain, protocol } from "electron";
 import * as path from "path";
 import * as fs from "fs";
 import { logger } from "./lib/logger";
-
+import { rpcInit, rpcUpdate, rpcClear, rpcShutdown, TrackPresence } from "./rpc";
 // These are injected by @electron-forge/plugin-vite at build/dev time
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
 declare const MAIN_WINDOW_VITE_DEV_SERVER_URL: string | undefined;
@@ -73,6 +73,19 @@ protocol.registerSchemesAsPrivileged([
 ]);
 
 app.whenReady().then(async () => {
+  await rpcInit();
+  createWindow();
+});
+
+app.on("before-quit", async () => {
+  await rpcShutdown();
+});
+
+// IPC for renderer → main
+ipcMain.handle("rpc:update", async (_evt, payload: TrackPresence) => {
+  return rpcUpdate(payload);
+});
+ipcMain.handle("rpc:clear", async () => rpcClear());
   // IPC for database persistence
   const dbPath = path.join(app.getPath("userData"), "foxy.sqlite");
   ipcMain.handle("db:save", async (_evt, data: ArrayBuffer) => {
@@ -186,12 +199,9 @@ app.whenReady().then(async () => {
     logger.error("Failed to register media:// protocol", e);
   }
 
-  await createWindow();
-
   app.on("activate", () => {
     if (BrowserWindow.getAllWindows().length === 0) void createWindow();
   });
-});
 
 app.on("window-all-closed", () => {
   if (process.platform !== "darwin") {

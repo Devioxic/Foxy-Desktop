@@ -124,6 +124,24 @@ export const MusicProvider: React.FC<MusicProviderProps> = ({ children }) => {
   const [quality, setQualityState] = useState<string>(
     () => localStorage.getItem("playback_quality") || "auto"
   );
+  // 👇 Add this inside MusicProvider, after your useState declarations
+useEffect(() => {
+  if (!currentTrack) {
+    window.rpc?.clear?.();
+    return;
+  }
+
+  window.rpc.update({
+    title: currentTrack.Name,                                 // song title
+    artist: currentTrack.Artist || currentTrack.AlbumArtist,  // prefer Artist, fallback AlbumArtist
+    album: currentTrack.Album || "",                          // album name if available
+    durationMs: duration * 1000,                              // seconds → ms
+    positionMs: currentTime * 1000,                           // seconds → ms
+    isPaused: isPaused,
+    publicUrl: undefined,                                     // Jellyfin URL if you want later
+  });
+}, [currentTrack?.Id, isPaused, currentTime, duration]);
+
   const [currentSrc, setCurrentSrc] = useState<string>("");
   const lastProgressReportRef = useRef<number>(0);
   // Effects settings
