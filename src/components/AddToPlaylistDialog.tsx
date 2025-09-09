@@ -277,7 +277,7 @@ export default function AddToPlaylistDialog({
                 {/* Synthetic Favourites entry (Jellyfin favourites aren't a real playlist) */}
                 <Card
                   key="__favorites__"
-                  className={`transition-colors cursor-pointer hover:bg-gray-50 ${trackIsFavorite ? "opacity-70" : ""}`}
+                  className={`transition-colors cursor-pointer hover:bg-accent ${trackIsFavorite ? "opacity-70" : ""}`}
                   onClick={() => {
                     if (trackIsFavorite) return; // already favourited
                     (async () => {
@@ -306,25 +306,25 @@ export default function AddToPlaylistDialog({
                   <CardContent className="p-3">
                     <div className="flex items-center space-x-3">
                       <div className="w-12 h-12 rounded flex-shrink-0 overflow-hidden">
-                        <div className="w-full h-full bg-gradient-to-br from-pink-200 to-rose-200 flex items-center justify-center">
-                          <Heart className="w-6 h-6 text-pink-600 fill-pink-600" />
+                        <div className="w-full h-full bg-gradient-to-br from-primary/20 to-primary/30 flex items-center justify-center">
+                          <Heart className="w-6 h-6 text-primary fill-primary" />
                         </div>
                       </div>
                       <div className="flex-1 min-w-0">
-                        <h4 className="font-medium text-gray-900 truncate flex items-center gap-2">
+                        <h4 className="font-medium text-foreground truncate flex items-center gap-2">
                           Favourites
                           {trackIsFavorite && (
-                            <span className="text-[10px] px-1 py-0.5 rounded bg-gray-200 text-gray-700">
+                            <span className="text-[10px] px-1 py-0.5 rounded bg-muted text-muted-foreground">
                               Added
                             </span>
                           )}
                         </h4>
-                        <p className="text-sm text-gray-500">
+                        <p className="text-sm text-muted-foreground">
                           Mark this track as favourite
                         </p>
                       </div>
                       {addingToPlaylist === "__favorites__" && (
-                        <Loader2 className="w-4 h-4 animate-spin text-pink-600" />
+                        <Loader2 className="w-4 h-4 animate-spin text-primary" />
                       )}
                     </div>
                   </CardContent>
@@ -339,7 +339,7 @@ export default function AddToPlaylistDialog({
                   return (
                     <Card
                       key={playlist.Id}
-                      className={`cursor-pointer transition-colors ${contains ? "hover:bg-gray-50" : "hover:bg-gray-50"}`}
+                      className={`cursor-pointer transition-colors ${contains ? "hover:bg-accent" : "hover:bg-accent"}`}
                       onClick={() => !isAdding && togglePlaylist(playlist.Id!)}
                     >
                       <CardContent className="p-3">
@@ -355,21 +355,21 @@ export default function AddToPlaylistDialog({
                                 height={48}
                               />
                             ) : (
-                              <div className="w-full h-full bg-gradient-to-br from-pink-200 to-rose-200 flex items-center justify-center">
-                                <ListMusic className="w-6 h-6 text-pink-600" />
+                              <div className="w-full h-full bg-gradient-to-br from-primary/20 to-primary/30 flex items-center justify-center">
+                                <ListMusic className="w-6 h-6 text-primary" />
                               </div>
                             )}
                           </div>
                           <div className="flex-1 min-w-0">
-                            <h4 className="font-medium text-gray-900 truncate flex items-center gap-2">
+                            <h4 className="font-medium text-foreground truncate flex items-center gap-2">
                               {playlist.Name}
                               {isFavList && (
-                                <span className="text-[10px] px-1 py-0.5 rounded bg-pink-100 text-pink-700 border border-pink-200">
+                                <span className="text-[10px] px-1 py-0.5 rounded bg-primary/10 text-primary border border-primary/20">
                                   Fav
                                 </span>
                               )}
                               {original && (
-                                <span className="text-[10px] px-1 py-0.5 rounded bg-gray-200 text-gray-700">
+                                <span className="text-[10px] px-1 py-0.5 rounded bg-muted text-muted-foreground">
                                   Added
                                 </span>
                               )}
@@ -381,12 +381,12 @@ export default function AddToPlaylistDialog({
                                 </span>
                               )}
                             </h4>
-                            <p className="text-sm text-gray-500">
+                            <p className="text-sm text-muted-foreground">
                               {playlist.ChildCount || 0} tracks
                             </p>
                           </div>
                           {isAdding && (
-                            <Loader2 className="w-4 h-4 animate-spin text-pink-600" />
+                            <Loader2 className="w-4 h-4 animate-spin text-primary" />
                           )}
                         </div>
                       </CardContent>
@@ -397,11 +397,11 @@ export default function AddToPlaylistDialog({
             </div>
           ) : (
             <div className="text-center py-8">
-              <ListMusic className="w-12 h-12 text-pink-400 mx-auto mb-3" />
-              <h3 className="text-lg font-medium text-gray-900 mb-1">
+              <ListMusic className="w-12 h-12 text-muted-foreground mx-auto mb-3" />
+              <h3 className="text-lg font-medium text-foreground mb-1">
                 No playlists
               </h3>
-              <p className="text-gray-500 text-sm">
+              <p className="text-muted-foreground text-sm">
                 Create a playlist first to add tracks to it.
               </p>
             </div>
