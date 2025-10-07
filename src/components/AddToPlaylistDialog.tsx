@@ -258,7 +258,7 @@ export default function AddToPlaylistDialog({
               : "Add track to a playlist"}
           </DialogDescription>
         </DialogHeader>
-        <div className="py-2">
+        <div className="py-2 overflow-hidden">
           {loading ? (
             <div className="space-y-3">
               {Array.from({ length: 3 }).map((_, i) => (
@@ -361,7 +361,7 @@ export default function AddToPlaylistDialog({
                             )}
                           </div>
                           <div className="flex-1 min-w-0">
-                            <h4 className="font-medium text-foreground truncate flex items-center gap-2">
+                            <h4 className="font-medium text-foreground truncate items-center gap-2 w-full">
                               {playlist.Name}
                               {isFavList && (
                                 <span className="text-[10px] px-1 py-0.5 rounded bg-primary/10 text-primary border border-primary/20">

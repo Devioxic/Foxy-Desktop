@@ -9,6 +9,12 @@ declare const MAIN_WINDOW_VITE_DEV_SERVER_URL: string | undefined;
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
 declare const MAIN_WINDOW_VITE_NAME: string | undefined;
 
+const allowDevTools =
+  !app.isPackaged || process.env.ELECTRON_ENABLE_DEVTOOLS === "1";
+const autoOpenDevTools =
+  allowDevTools &&
+  (!app.isPackaged || process.env.OPEN_DEVTOOLS_ON_START === "1");
+
 if (process.platform === "win32") {
   try {
     // eslint-disable-next-line @typescript-eslint/no-var-requires
@@ -56,6 +62,34 @@ const createWindow = async () => {
   });
 
   win.setMenu(null); // Hide the menu bar
+
+  if (allowDevTools) {
+    const toggleDevTools = () => {
+      if (win.webContents.isDevToolsOpened()) {
+        win.webContents.closeDevTools();
+      } else {
+        win.webContents.openDevTools({ mode: "detach" });
+      }
+    };
+
+    win.webContents.on("before-input-event", (event, input) => {
+      const key = input.key?.toLowerCase();
+      const isToggleShortcut =
+        (key === "i" && input.control && input.shift) || key === "f12";
+      if (isToggleShortcut) {
+        event.preventDefault();
+        toggleDevTools();
+      }
+    });
+
+    if (autoOpenDevTools) {
+      win.webContents.once("did-finish-load", () => {
+        if (!win.webContents.isDevToolsOpened()) {
+          win.webContents.openDevTools({ mode: "detach" });
+        }
+      });
+    }
+  }
 };
 
 // Register custom protocol before app is ready
