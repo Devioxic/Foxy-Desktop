@@ -16,6 +16,7 @@ import {
   getPlaylistInfo,
   getPlaylistItems,
   addToFavorites,
+  removeFromFavorites,
   checkIsFavorite,
   removeItemsFromPlaylist,
 } from "@/lib/jellyfin";
@@ -43,7 +44,6 @@ export default function AddToPlaylistDialog({
 }: AddToPlaylistDialogProps) {
   const [playlists, setPlaylists] = useState<BaseItemDto[]>([]);
   const [loading, setLoading] = useState(false);
-  const [addingToPlaylist, setAddingToPlaylist] = useState<string | null>(null);
   const [playlistContains, setPlaylistContains] = useState<
     Record<string, boolean>
   >({});
@@ -60,6 +60,7 @@ export default function AddToPlaylistDialog({
     null
   );
   const [trackIsFavorite, setTrackIsFavorite] = useState<boolean>(false);
+  const [stagedFavorite, setStagedFavorite] = useState<boolean>(false);
   const emitFavoriteEvent = (isFavorite: boolean) => {
     if (!trackId) return;
     try {
@@ -148,6 +149,7 @@ export default function AddToPlaylistDialog({
             trackId
           );
           setTrackIsFavorite(favStatus);
+          setStagedFavorite(favStatus);
         }
       } catch {}
     } catch (error) {
@@ -167,8 +169,12 @@ export default function AddToPlaylistDialog({
 
   const isDirty = React.useMemo(() => {
     const keys = Object.keys(stagedContains);
-    return keys.some((k) => stagedContains[k] !== playlistContains[k]);
-  }, [stagedContains, playlistContains]);
+    const playlistChanged = keys.some(
+      (k) => stagedContains[k] !== playlistContains[k]
+    );
+    const favoriteChanged = stagedFavorite !== trackIsFavorite;
+    return playlistChanged || favoriteChanged;
+  }, [stagedContains, playlistContains, stagedFavorite, trackIsFavorite]);
 
   const applyChanges = async () => {
     if (!isDirty) {
@@ -204,6 +210,7 @@ export default function AddToPlaylistDialog({
                   trackId
                 );
                 setTrackIsFavorite(true);
+                setStagedFavorite(true);
                 emitFavoriteEvent(true);
               }
             }
@@ -254,6 +261,23 @@ export default function AddToPlaylistDialog({
           }
         })
       );
+
+      if (stagedFavorite !== trackIsFavorite) {
+        const auth = JSON.parse(localStorage.getItem("authData") || "{}");
+        if (auth.serverAddress && auth.accessToken) {
+          if (stagedFavorite) {
+            await addToFavorites(auth.serverAddress, auth.accessToken, trackId);
+          } else {
+            await removeFromFavorites(
+              auth.serverAddress,
+              auth.accessToken,
+              trackId
+            );
+          }
+          setTrackIsFavorite(stagedFavorite);
+          emitFavoriteEvent(stagedFavorite);
+        }
+      }
       // Notify other views to refresh
       try {
         window.dispatchEvent(new CustomEvent("syncUpdate"));
@@ -294,32 +318,13 @@ export default function AddToPlaylistDialog({
                 {/* Synthetic Favourites entry (Jellyfin favourites aren't a real playlist) */}
                 <Card
                   key="__favorites__"
-                  className={`transition-colors cursor-pointer hover:bg-accent ${trackIsFavorite ? "opacity-70" : ""}`}
+                  className={`transition-colors cursor-pointer hover:bg-accent ${stagedFavorite ? "border border-primary/30 bg-primary/5" : ""}`}
                   onClick={() => {
-                    if (trackIsFavorite) return; // already favourited
-                    (async () => {
-                      setAddingToPlaylist("__favorites__");
-                      try {
-                        const auth = JSON.parse(
-                          localStorage.getItem("authData") || "{}"
-                        );
-                        if (auth.serverAddress && auth.accessToken) {
-                          await addToFavorites(
-                            auth.serverAddress,
-                            auth.accessToken,
-                            trackId
-                          );
-                          setTrackIsFavorite(true);
-                          emitFavoriteEvent(true);
-                        }
-                        onOpenChange(false);
-                      } catch (e) {
-                        logger.error("Failed to favourite track:", e);
-                      } finally {
-                        setAddingToPlaylist(null);
-                      }
-                    })();
+                    if (!trackId) return;
+                    setStagedFavorite((prev) => !prev);
                   }}
+                  role="button"
+                  aria-pressed={stagedFavorite}
                 >
                   <CardContent className="p-3">
                     <div className="flex items-center space-x-3">
@@ -336,19 +341,34 @@ export default function AddToPlaylistDialog({
                               Added
                             </span>
                           )}
+                          {stagedFavorite !== trackIsFavorite && (
+                            <span
+                              className={`text-[10px] px-1 py-0.5 rounded border ${stagedFavorite ? "bg-green-100 text-green-700 border-green-200" : "bg-red-100 text-red-700 border-red-200"}`}
+                            >
+                              {stagedFavorite ? "Will add" : "Will remove"}
+                            </span>
+                          )}
+                          {!trackIsFavorite &&
+                            stagedFavorite === trackIsFavorite && (
+                              <span className="text-[10px] px-1 py-0.5 rounded bg-muted text-muted-foreground">
+                                Not added
+                              </span>
+                            )}
                         </h4>
                         <p className="text-sm text-muted-foreground">
-                          Mark this track as favourite
+                          {stagedFavorite !== trackIsFavorite
+                            ? stagedFavorite
+                              ? "Will mark this track as favourite"
+                              : "Will remove this track from favourites"
+                            : stagedFavorite
+                              ? "Track is currently favourited"
+                              : "Track is not favourited"}
                         </p>
                       </div>
-                      {addingToPlaylist === "__favorites__" && (
-                        <Loader2 className="w-4 h-4 animate-spin text-primary" />
-                      )}
                     </div>
                   </CardContent>
                 </Card>
                 {playlists.map((playlist) => {
-                  const isAdding = addingToPlaylist === playlist.Id;
                   const original = playlistContains[playlist.Id || ""];
                   const desired = stagedContains[playlist.Id || ""];
                   const contains = desired; // reflect staged state
@@ -358,7 +378,7 @@ export default function AddToPlaylistDialog({
                     <Card
                       key={playlist.Id}
                       className={`cursor-pointer transition-colors ${contains ? "hover:bg-accent" : "hover:bg-accent"}`}
-                      onClick={() => !isAdding && togglePlaylist(playlist.Id!)}
+                      onClick={() => togglePlaylist(playlist.Id!)}
                     >
                       <CardContent className="p-3">
                         <div className="flex items-center space-x-3">
@@ -403,9 +423,6 @@ export default function AddToPlaylistDialog({
                               {playlist.ChildCount || 0} tracks
                             </p>
                           </div>
-                          {isAdding && (
-                            <Loader2 className="w-4 h-4 animate-spin text-primary" />
-                          )}
                         </div>
                       </CardContent>
                     </Card>
