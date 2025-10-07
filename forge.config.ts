@@ -2,7 +2,7 @@ import type { ForgeConfig } from "@electron-forge/shared-types";
 import { MakerSquirrel } from "@electron-forge/maker-squirrel";
 import { MakerDMG } from "@electron-forge/maker-dmg";
 import { MakerDeb } from "@electron-forge/maker-deb";
-
+import { MakerZIP } from "@electron-forge/maker-zip";
 import { VitePlugin } from "@electron-forge/plugin-vite";
 import { FusesPlugin } from "@electron-forge/plugin-fuses";
 import { FuseV1Options, FuseVersion } from "@electron/fuses";
@@ -32,6 +32,7 @@ const config: ForgeConfig = {
         "https://raw.githubusercontent.com/Devioxic/Foxy-Desktop/refs/heads/master/public/icon%400.5x.ico",
       setupIcon: "public/icon.ico",
     }),
+    new MakerZIP({}),
     new MakerDMG({
       icon: "public/icon.icns",
     }),
