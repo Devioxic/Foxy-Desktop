@@ -875,6 +875,87 @@ class LocalDatabase {
     return results.length > 0 ? this.rowToPlaylist(results[0]) : null;
   }
 
+  async replacePlaylistItems(
+    playlistId: string,
+    items: Array<{
+      playlistItemId?: string | null;
+      trackId: string;
+      sortIndex?: number | null;
+    }>
+  ): Promise<void> {
+    if (!this.db) throw new Error("Database not initialized");
+    const timestamp = Date.now();
+    this.db.exec("BEGIN TRANSACTION");
+    try {
+      const deleteStmt = this.db.prepare(
+        "DELETE FROM playlist_items WHERE playlist_id = ?"
+      );
+      deleteStmt.run([playlistId]);
+      deleteStmt.free();
+
+      if (items.length) {
+        const insertStmt = this.db.prepare(`
+          INSERT OR REPLACE INTO playlist_items (id, playlist_id, track_id, sort_index, sync_timestamp)
+          VALUES (?, ?, ?, ?, ?)
+        `);
+        for (const item of items) {
+          if (!item.trackId) continue;
+          const playlistItemId =
+            item.playlistItemId || `${playlistId}:${item.trackId}`;
+          insertStmt.run([
+            playlistItemId,
+            playlistId,
+            item.trackId,
+            item.sortIndex ?? 0,
+            timestamp,
+          ]);
+        }
+        insertStmt.free();
+      }
+
+      this.db.exec("COMMIT");
+    } catch (error) {
+      this.db.exec("ROLLBACK");
+      throw error;
+    }
+
+    await this.saveDatabase();
+  }
+
+  async getTrackPlaylistMembership(
+    trackId: string
+  ): Promise<
+    Record<string, { playlistItemId: string | null; sortIndex: number | null }>
+  > {
+    if (!trackId) return {};
+    const rows = this.exec(
+      `SELECT playlist_id, id AS playlist_item_id, sort_index FROM playlist_items WHERE track_id = ?`,
+      [trackId]
+    );
+    const map: Record<
+      string,
+      { playlistItemId: string | null; sortIndex: number | null }
+    > = {};
+    for (const row of rows) {
+      const pid = row.playlist_id as string;
+      map[pid] = {
+        playlistItemId: (row.playlist_item_id as string) || null,
+        sortIndex:
+          typeof row.sort_index === "number"
+            ? (row.sort_index as number)
+            : null,
+      };
+    }
+    return map;
+  }
+
+  async hasPlaylistItemsCached(): Promise<boolean> {
+    const results = this.exec(
+      "SELECT 1 as present FROM playlist_items LIMIT 1"
+    );
+    return results.length > 0;
+  }
+
   // New: remove a playlist and its items from local database cache
   async deletePlaylist(playlistId: string): Promise<void> {
     if (!this.db) throw new Error("Database not initialized");

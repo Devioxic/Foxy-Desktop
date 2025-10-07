@@ -34,6 +34,7 @@ import {
   Info,
 } from "lucide-react";
 import { findArtistByName, findAlbumByName } from "@/lib/jellyfin";
+import { APP_EVENTS, FavoriteStateChangedDetail } from "@/constants/events";
 // Add favorite helpers
 import {
   addToFavorites,
@@ -99,6 +100,23 @@ const MusicPlayer: React.FC<MusicPlayerProps> = ({
     accessToken,
     currentSrc,
   } = useMusicPlayer();
+
+  const currentTrackId = currentTrack?.Id;
+
+  const publishFavoriteChange = React.useCallback(
+    (trackId: string, isFav: boolean) => {
+      if (!trackId) return;
+      window.dispatchEvent(
+        new CustomEvent<FavoriteStateChangedDetail>(
+          APP_EVENTS.favoriteStateChanged,
+          {
+            detail: { trackId, isFavorite: isFav },
+          }
+        )
+      );
+    },
+    []
+  );
   const handleArtistClick = async (artistName: string) => {
     try {
       const original = artistName;
@@ -237,6 +255,26 @@ const MusicPlayer: React.FC<MusicPlayerProps> = ({
     loadFavorite();
   }, [currentTrack?.Id, serverAddress, accessToken]);
 
+  React.useEffect(() => {
+    const handler = (event: Event) => {
+      const { detail } = event as CustomEvent<FavoriteStateChangedDetail>;
+      if (!detail) return;
+      if (detail.trackId === currentTrackId) {
+        setIsFavorite(detail.isFavorite);
+      }
+    };
+    window.addEventListener(
+      APP_EVENTS.favoriteStateChanged,
+      handler as EventListener
+    );
+    return () => {
+      window.removeEventListener(
+        APP_EVENTS.favoriteStateChanged,
+        handler as EventListener
+      );
+    };
+  }, [currentTrackId]);
+
   const toggleCurrentTrackFavorite = async (e: React.MouseEvent) => {
     e.stopPropagation();
     if (!currentTrack?.Id || !serverAddress || !accessToken || favoriteLoading)
@@ -246,9 +284,11 @@ const MusicPlayer: React.FC<MusicPlayerProps> = ({
       if (isFavorite) {
         await removeFromFavorites(serverAddress, accessToken, currentTrack.Id);
         setIsFavorite(false);
+        publishFavoriteChange(currentTrack.Id, false);
       } else {
         await addToFavorites(serverAddress, accessToken, currentTrack.Id);
         setIsFavorite(true);
+        publishFavoriteChange(currentTrack.Id, true);
       }
     } catch (err) {
       logger.error("Failed to toggle favorite", err);

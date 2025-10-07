@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from "react";
+import { APP_EVENTS, FavoriteStateChangedDetail } from "@/constants/events";
 import { useParams, useNavigate, useSearchParams } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -123,6 +124,32 @@ const PlaylistView = () => {
       loadPlaylistData();
     }
   }, [playlistId]);
+
+  useEffect(() => {
+    const trackIds = new Set(
+      (tracks || []).map((track) => track.Id).filter(Boolean) as string[]
+    );
+    const handler = (event: Event) => {
+      const { detail } = event as CustomEvent<FavoriteStateChangedDetail>;
+      if (!detail?.trackId || !trackIds.has(detail.trackId)) return;
+      setTrackFavorites((prev) => {
+        if (prev[detail.trackId] === detail.isFavorite) {
+          return prev;
+        }
+        return { ...prev, [detail.trackId]: detail.isFavorite };
+      });
+    };
+    window.addEventListener(
+      APP_EVENTS.favoriteStateChanged,
+      handler as EventListener
+    );
+    return () => {
+      window.removeEventListener(
+        APP_EVENTS.favoriteStateChanged,
+        handler as EventListener
+      );
+    };
+  }, [tracks]);
 
   useEffect(() => {
     if (currentTrack) {

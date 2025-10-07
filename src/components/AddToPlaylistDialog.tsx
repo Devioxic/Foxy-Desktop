@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -16,6 +16,7 @@ import {
   getPlaylistInfo,
   getPlaylistItems,
   addToFavorites,
+  removeFromFavorites,
   checkIsFavorite,
   removeItemsFromPlaylist,
 } from "@/lib/jellyfin";
@@ -23,9 +24,10 @@ import { isCollectionDownloaded, downloadTrack } from "@/lib/downloads";
 import { localDb } from "@/lib/database";
 import { hybridData } from "@/lib/sync";
 import { logger } from "@/lib/logger";
-import { ListMusic, Plus, Loader2, Heart } from "lucide-react";
+import { ListMusic, Loader2, Heart, Circle, CircleDot } from "lucide-react";
 import { BaseItemDto } from "@jellyfin/sdk/lib/generated-client/models";
 import BlurHashImage from "@/components/BlurHashImage";
+import { APP_EVENTS, FavoriteStateChangedDetail } from "@/constants/events";
 
 interface AddToPlaylistDialogProps {
   open: boolean;
@@ -42,7 +44,6 @@ export default function AddToPlaylistDialog({
 }: AddToPlaylistDialogProps) {
   const [playlists, setPlaylists] = useState<BaseItemDto[]>([]);
   const [loading, setLoading] = useState(false);
-  const [addingToPlaylist, setAddingToPlaylist] = useState<string | null>(null);
   const [playlistContains, setPlaylistContains] = useState<
     Record<string, boolean>
   >({});
@@ -59,6 +60,33 @@ export default function AddToPlaylistDialog({
     null
   );
   const [trackIsFavorite, setTrackIsFavorite] = useState<boolean>(false);
+  const [stagedFavorite, setStagedFavorite] = useState<boolean>(false);
+  const FavoriteStatusIcon = stagedFavorite ? CircleDot : Circle;
+  let favoriteStatusIconClass = "w-5 h-5 transition-colors";
+  if (stagedFavorite !== trackIsFavorite) {
+    favoriteStatusIconClass += stagedFavorite
+      ? " text-green-600"
+      : " text-red-600";
+  } else {
+    favoriteStatusIconClass += stagedFavorite
+      ? " text-primary"
+      : " text-muted-foreground";
+  }
+  const emitFavoriteEvent = (isFavorite: boolean) => {
+    if (!trackId) return;
+    try {
+      window.dispatchEvent(
+        new CustomEvent<FavoriteStateChangedDetail>(
+          APP_EVENTS.favoriteStateChanged,
+          {
+            detail: { trackId, isFavorite },
+          }
+        )
+      );
+    } catch (error) {
+      logger.error("Failed to dispatch favorite state change", error);
+    }
+  };
 
   // Get auth data from localStorage
   const authData = JSON.parse(localStorage.getItem("authData") || "{}");
@@ -81,6 +109,59 @@ export default function AddToPlaylistDialog({
     return playlist.ImageBlurHashes.Primary[primaryImageTag];
   };
 
+  const primePlaylistCache = useCallback(
+    async (playlistsData: BaseItemDto[]) => {
+      try {
+        if (!playlistsData.length) return;
+        await localDb.initialize();
+        try {
+          await localDb.savePlaylists(playlistsData);
+        } catch (saveError) {
+          logger.warn("Failed to cache playlists metadata", saveError);
+        }
+
+        let tracksBuffer: BaseItemDto[] = [];
+        for (const playlist of playlistsData) {
+          if (!playlist.Id) continue;
+          try {
+            const items = await getPlaylistItems(playlist.Id);
+            const normalized = (items || []).filter((item) => item?.Id);
+            const entries = normalized.map((item, index) => ({
+              playlistItemId:
+                ((item as any).PlaylistItemId as string | undefined) ||
+                `${playlist.Id}:${item.Id}:${index}`,
+              trackId: item.Id!,
+              sortIndex: index,
+            }));
+            await localDb.replacePlaylistItems(playlist.Id, entries);
+            const audioTracks = normalized.filter(
+              (item) => item.Type === "Audio" && item.Id
+            );
+            if (audioTracks.length) {
+              tracksBuffer.push(...audioTracks);
+              if (tracksBuffer.length >= 200) {
+                await localDb.saveTracks(tracksBuffer);
+                tracksBuffer = [];
+              }
+            }
+          } catch (error) {
+            logger.warn(
+              `Failed to prime playlist cache for ${playlist.Name || playlist.Id}`,
+              error
+            );
+          }
+        }
+
+        if (tracksBuffer.length) {
+          await localDb.saveTracks(tracksBuffer);
+        }
+      } catch (error) {
+        logger.warn("Prime playlist cache failed", error);
+      }
+    },
+    []
+  );
+
   useEffect(() => {
     if (open) {
       loadPlaylists();
@@ -102,25 +183,108 @@ export default function AddToPlaylistDialog({
       );
       setFavoritePlaylistId(fav?.Id || null);
 
-      // Determine if track already added to each playlist (fetch items lazily in parallel but capped)
+      const containsMap: Record<string, boolean> = {};
+      const entryIds: Record<string, string | null> = {};
+
       if (trackId) {
-        const containsMap: Record<string, boolean> = {};
-        const entryIds: Record<string, string | null> = {};
-        await Promise.all(
-          playlistsData.slice(0, 25).map(async (pl) => {
+        try {
+          await localDb.initialize();
+          let membership: Record<string, { playlistItemId: string | null }> =
+            {};
+          const hasCachedItems = await localDb.hasPlaylistItemsCached();
+
+          if (hasCachedItems) {
+            membership = await localDb.getTrackPlaylistMembership(trackId);
+          } else if (playlistsData.length) {
+            const remoteMembership: Record<
+              string,
+              { playlistItemId: string | null }
+            > = {};
+            const tracksToCache: BaseItemDto[] = [];
+
+            await Promise.all(
+              playlistsData.slice(0, 25).map(async (pl) => {
+                if (!pl.Id) return;
+                try {
+                  const items = await getPlaylistItems(pl.Id);
+                  const match = items.find((item: any) => item.Id === trackId);
+                  if (match) {
+                    remoteMembership[pl.Id] = {
+                      playlistItemId: match.PlaylistItemId || null,
+                    };
+                  }
+
+                  const normalized = (items || []).filter((item) => item?.Id);
+                  const entries = normalized.map((item, index) => ({
+                    playlistItemId:
+                      ((item as any).PlaylistItemId as string | undefined) ||
+                      `${pl.Id}:${item.Id}:${index}`,
+                    trackId: item.Id!,
+                    sortIndex: index,
+                  }));
+                  await localDb.replacePlaylistItems(pl.Id, entries);
+
+                  const audioTracks = normalized.filter(
+                    (item) => item.Type === "Audio" && item.Id
+                  );
+                  if (audioTracks.length) {
+                    tracksToCache.push(...audioTracks);
+                  }
+                } catch (error) {
+                  logger.warn(
+                    `Failed to fetch playlist items for ${pl.Name || pl.Id}`,
+                    error
+                  );
+                }
+              })
+            );
+
+            if (tracksToCache.length) {
+              await localDb.saveTracks(tracksToCache);
+            }
+
             try {
-              if (!pl.Id) return;
-              const items = await getPlaylistItems(pl.Id);
-              const it = items.find((it: any) => it.Id === trackId);
-              containsMap[pl.Id] = !!it;
-              entryIds[pl.Id] = it?.PlaylistItemId || null;
-            } catch {}
-          })
-        );
-        setPlaylistContains(containsMap);
-        setStagedContains(containsMap);
-        setEntryIdMap(entryIds);
+              await localDb.savePlaylists(playlistsData);
+            } catch (saveError) {
+              logger.warn(
+                "Failed to persist playlist metadata locally",
+                saveError
+              );
+            }
+
+            membership = remoteMembership;
+
+            // Prime the rest of the cache asynchronously for future loads
+            void primePlaylistCache(playlistsData);
+          }
+
+          for (const playlist of playlistsData) {
+            if (!playlist.Id) continue;
+            const info = membership[playlist.Id];
+            containsMap[playlist.Id] = !!info;
+            entryIds[playlist.Id] = info?.playlistItemId ?? null;
+          }
+        } catch (error) {
+          logger.warn("Unable to resolve playlist membership", error);
+          for (const playlist of playlistsData) {
+            if (!playlist.Id) continue;
+            containsMap[playlist.Id] = false;
+            entryIds[playlist.Id] = null;
+          }
+        }
       }
+
+      if (!trackId) {
+        for (const playlist of playlistsData) {
+          if (!playlist.Id) continue;
+          containsMap[playlist.Id] = false;
+          entryIds[playlist.Id] = null;
+        }
+      }
+
+      setPlaylistContains(containsMap);
+      setStagedContains(containsMap);
+      setEntryIdMap(entryIds);
 
       // Check favourite status of track
       try {
@@ -132,6 +296,7 @@ export default function AddToPlaylistDialog({
             trackId
           );
           setTrackIsFavorite(favStatus);
+          setStagedFavorite(favStatus);
         }
       } catch {}
     } catch (error) {
@@ -151,8 +316,12 @@ export default function AddToPlaylistDialog({
 
   const isDirty = React.useMemo(() => {
     const keys = Object.keys(stagedContains);
-    return keys.some((k) => stagedContains[k] !== playlistContains[k]);
-  }, [stagedContains, playlistContains]);
+    const playlistChanged = keys.some(
+      (k) => stagedContains[k] !== playlistContains[k]
+    );
+    const favoriteChanged = stagedFavorite !== trackIsFavorite;
+    return playlistChanged || favoriteChanged;
+  }, [stagedContains, playlistContains, stagedFavorite, trackIsFavorite]);
 
   const applyChanges = async () => {
     if (!isDirty) {
@@ -160,6 +329,7 @@ export default function AddToPlaylistDialog({
       return;
     }
     setSaving(true);
+    const playlistsToRefresh = new Set<string>();
     try {
       const toAdd: string[] = [];
       const toRemove: string[] = [];
@@ -174,6 +344,7 @@ export default function AddToPlaylistDialog({
         toAdd.map(async (pid) => {
           try {
             await addItemsToPlaylist(pid, [trackId]);
+            playlistsToRefresh.add(pid);
             // If favourite playlist, also favourite the track
             if (
               favoritePlaylistId &&
@@ -188,6 +359,8 @@ export default function AddToPlaylistDialog({
                   trackId
                 );
                 setTrackIsFavorite(true);
+                setStagedFavorite(true);
+                emitFavoriteEvent(true);
               }
             }
             // If playlist is downloaded, auto-download this track
@@ -224,6 +397,7 @@ export default function AddToPlaylistDialog({
             }
             if (entryId) {
               await removeItemsFromPlaylist(pid, [entryId]);
+              playlistsToRefresh.add(pid);
               setPlaylists((prev) =>
                 prev.map((p) =>
                   p.Id === pid
@@ -237,10 +411,65 @@ export default function AddToPlaylistDialog({
           }
         })
       );
+
+      if (stagedFavorite !== trackIsFavorite) {
+        const auth = JSON.parse(localStorage.getItem("authData") || "{}");
+        if (auth.serverAddress && auth.accessToken) {
+          if (stagedFavorite) {
+            await addToFavorites(auth.serverAddress, auth.accessToken, trackId);
+          } else {
+            await removeFromFavorites(
+              auth.serverAddress,
+              auth.accessToken,
+              trackId
+            );
+          }
+          setTrackIsFavorite(stagedFavorite);
+          emitFavoriteEvent(stagedFavorite);
+        }
+      }
       // Notify other views to refresh
       try {
         window.dispatchEvent(new CustomEvent("syncUpdate"));
       } catch {}
+
+      if (playlistsToRefresh.size > 0) {
+        const targetPlaylists = playlists.filter(
+          (pl) => pl.Id && playlistsToRefresh.has(pl.Id)
+        );
+        if (targetPlaylists.length) {
+          await primePlaylistCache(targetPlaylists);
+          if (trackId) {
+            try {
+              await localDb.initialize();
+              const refreshedMembership =
+                await localDb.getTrackPlaylistMembership(trackId);
+              setPlaylistContains((prev) => {
+                const next = { ...prev };
+                for (const pl of targetPlaylists) {
+                  if (!pl.Id) continue;
+                  next[pl.Id] = !!refreshedMembership[pl.Id];
+                }
+                return next;
+              });
+              setEntryIdMap((prev) => {
+                const next = { ...prev };
+                for (const pl of targetPlaylists) {
+                  if (!pl.Id) continue;
+                  next[pl.Id] =
+                    refreshedMembership[pl.Id]?.playlistItemId ?? null;
+                }
+                return next;
+              });
+            } catch (error) {
+              logger.warn(
+                "Failed to update local membership state after changes",
+                error
+              );
+            }
+          }
+        }
+      }
       onOpenChange(false);
     } finally {
       setSaving(false);
@@ -258,7 +487,7 @@ export default function AddToPlaylistDialog({
               : "Add track to a playlist"}
           </DialogDescription>
         </DialogHeader>
-        <div className="py-2">
+        <div className="py-2 overflow-hidden">
           {loading ? (
             <div className="space-y-3">
               {Array.from({ length: 3 }).map((_, i) => (
@@ -277,73 +506,59 @@ export default function AddToPlaylistDialog({
                 {/* Synthetic Favourites entry (Jellyfin favourites aren't a real playlist) */}
                 <Card
                   key="__favorites__"
-                  className={`transition-colors cursor-pointer hover:bg-accent ${trackIsFavorite ? "opacity-70" : ""}`}
+                  className={`transition-colors cursor-pointer hover:bg-accent ${stagedFavorite ? "border border-primary/30 bg-primary/5" : ""}`}
                   onClick={() => {
-                    if (trackIsFavorite) return; // already favourited
-                    (async () => {
-                      setAddingToPlaylist("__favorites__");
-                      try {
-                        const auth = JSON.parse(
-                          localStorage.getItem("authData") || "{}"
-                        );
-                        if (auth.serverAddress && auth.accessToken) {
-                          await addToFavorites(
-                            auth.serverAddress,
-                            auth.accessToken,
-                            trackId
-                          );
-                          setTrackIsFavorite(true);
-                        }
-                        onOpenChange(false);
-                      } catch (e) {
-                        logger.error("Failed to favourite track:", e);
-                      } finally {
-                        setAddingToPlaylist(null);
-                      }
-                    })();
+                    if (!trackId) return;
+                    setStagedFavorite((prev) => !prev);
                   }}
+                  role="button"
+                  aria-pressed={stagedFavorite}
                 >
                   <CardContent className="p-3">
-                    <div className="flex items-center space-x-3">
+                    <div className="flex items-center gap-3">
                       <div className="w-12 h-12 rounded flex-shrink-0 overflow-hidden">
                         <div className="w-full h-full bg-gradient-to-br from-primary/20 to-primary/30 flex items-center justify-center">
                           <Heart className="w-6 h-6 text-primary fill-primary" />
                         </div>
                       </div>
                       <div className="flex-1 min-w-0">
-                        <h4 className="font-medium text-foreground truncate flex items-center gap-2">
+                        <h4 className="font-medium text-foreground truncate">
                           Favourites
-                          {trackIsFavorite && (
-                            <span className="text-[10px] px-1 py-0.5 rounded bg-muted text-muted-foreground">
-                              Added
-                            </span>
-                          )}
                         </h4>
-                        <p className="text-sm text-muted-foreground">
-                          Mark this track as favourite
-                        </p>
                       </div>
-                      {addingToPlaylist === "__favorites__" && (
-                        <Loader2 className="w-4 h-4 animate-spin text-primary" />
-                      )}
+                      <div className="ml-auto flex-shrink-0">
+                        <FavoriteStatusIcon
+                          className={favoriteStatusIconClass}
+                          aria-hidden="true"
+                        />
+                      </div>
                     </div>
                   </CardContent>
                 </Card>
                 {playlists.map((playlist) => {
-                  const isAdding = addingToPlaylist === playlist.Id;
                   const original = playlistContains[playlist.Id || ""];
                   const desired = stagedContains[playlist.Id || ""];
                   const contains = desired; // reflect staged state
                   const isFavList = favoritePlaylistId === playlist.Id;
-
+                  const PlaylistStatusIcon = contains ? CircleDot : Circle;
+                  let playlistStatusIconClass = "w-5 h-5 transition-colors";
+                  if (desired !== original) {
+                    playlistStatusIconClass += desired
+                      ? " text-green-600"
+                      : " text-red-600";
+                  } else {
+                    playlistStatusIconClass += contains
+                      ? " text-primary"
+                      : " text-muted-foreground";
+                  }
                   return (
                     <Card
                       key={playlist.Id}
                       className={`cursor-pointer transition-colors ${contains ? "hover:bg-accent" : "hover:bg-accent"}`}
-                      onClick={() => !isAdding && togglePlaylist(playlist.Id!)}
+                      onClick={() => togglePlaylist(playlist.Id!)}
                     >
                       <CardContent className="p-3">
-                        <div className="flex items-center space-x-3">
+                        <div className="flex items-center gap-3">
                           <div className="w-12 h-12 rounded flex-shrink-0 overflow-hidden">
                             {getPlaylistImage(playlist) ? (
                               <BlurHashImage
@@ -361,33 +576,26 @@ export default function AddToPlaylistDialog({
                             )}
                           </div>
                           <div className="flex-1 min-w-0">
-                            <h4 className="font-medium text-foreground truncate flex items-center gap-2">
-                              {playlist.Name}
+                            <div className="flex items-center gap-2">
+                              <h4 className="font-medium text-foreground truncate">
+                                {playlist.Name}
+                              </h4>
                               {isFavList && (
                                 <span className="text-[10px] px-1 py-0.5 rounded bg-primary/10 text-primary border border-primary/20">
                                   Fav
                                 </span>
                               )}
-                              {original && (
-                                <span className="text-[10px] px-1 py-0.5 rounded bg-muted text-muted-foreground">
-                                  Added
-                                </span>
-                              )}
-                              {desired !== original && (
-                                <span
-                                  className={`text-[10px] px-1 py-0.5 rounded border ${desired ? "bg-green-100 text-green-700 border-green-200" : "bg-red-100 text-red-700 border-red-200"}`}
-                                >
-                                  {desired ? "Will add" : "Will remove"}
-                                </span>
-                              )}
-                            </h4>
+                            </div>
                             <p className="text-sm text-muted-foreground">
                               {playlist.ChildCount || 0} tracks
                             </p>
                           </div>
-                          {isAdding && (
-                            <Loader2 className="w-4 h-4 animate-spin text-primary" />
-                          )}
+                          <div className="ml-auto flex-shrink-0">
+                            <PlaylistStatusIcon
+                              className={playlistStatusIconClass}
+                              aria-hidden="true"
+                            />
+                          </div>
                         </div>
                       </CardContent>
                     </Card>

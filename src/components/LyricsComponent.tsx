@@ -115,25 +115,25 @@ const LyricsComponent: React.FC<LyricsProps> = ({ isOpen, onClose }) => {
         bottom: "6rem", // closer to player to increase height
       }}
     >
-      <div className="relative w-full h-full overflow-hidden rounded-2xl border border-gray-200 shadow-sm bg-white flex flex-col">
+      <div className="relative w-full h-full overflow-hidden rounded-2xl border border-border/70 dark:border-border/40 shadow-lg dark:shadow-none bg-card/95 backdrop-blur-sm flex flex-col">
         {/* Header */}
         <div className="relative flex items-center justify-between px-6 py-3">
           <div className="flex items-center gap-2">
-            <FileText className="w-5 h-5 text-gray-500" />
-            <h2 className="text-base font-semibold text-gray-900 tracking-tight">
+            <FileText className="w-5 h-5 text-muted-foreground" />
+            <h2 className="text-base font-semibold text-foreground tracking-tight">
               Lyrics
             </h2>
           </div>
           <div className="flex items-center gap-3">
             {lyrics?.isTimeSynced && (
-              <span className="inline-flex items-center gap-1 text-xs font-medium px-2 py-1 rounded-full bg-pink-100 text-pink-600">
-                <Clock className="w-3 h-3 text-pink-600" /> Synced
+              <span className="inline-flex items-center gap-1 text-xs font-medium px-2 py-1 rounded-full bg-pink-500/15 dark:bg-pink-400/20 text-pink-600 dark:text-pink-200">
+                <Clock className="w-3 h-3" /> Synced
               </span>
             )}
             <Button
               variant="ghost"
               onClick={onClose}
-              className="text-gray-600 hover:text-gray-900 hover:bg-gray-100"
+              className="text-muted-foreground hover:text-foreground hover:bg-muted"
               size="sm"
             >
               <X className="w-4 h-4" />
@@ -154,11 +154,11 @@ const LyricsComponent: React.FC<LyricsProps> = ({ isOpen, onClose }) => {
 
           {error && !loading && (
             <div className="text-center py-24 max-w-2xl mx-auto">
-              <Music className="w-16 h-16 text-gray-300 mx-auto mb-6" />
-              <h3 className="text-2xl font-semibold text-gray-900 mb-2">
+              <Music className="w-16 h-16 text-muted-foreground/50 mx-auto mb-6" />
+              <h3 className="text-2xl font-semibold text-foreground mb-2">
                 {error}
               </h3>
-              <p className="text-gray-600 text-lg">
+              <p className="text-muted-foreground text-lg">
                 This track doesn't have lyrics available
               </p>
             </div>
@@ -196,7 +196,7 @@ const LyricsComponent: React.FC<LyricsProps> = ({ isOpen, onClose }) => {
                 })}
                 {lyrics.lyrics.length === 0 && (
                   <div className="text-center py-24">
-                    <Music className="w-16 h-16 text-muted-foreground mx-auto mb-6" />
+                    <Music className="w-16 h-16 text-muted-foreground/60 mx-auto mb-6" />
                     <p className="text-muted-foreground text-xl">
                       No lyrics to display
                     </p>
@@ -208,11 +208,11 @@ const LyricsComponent: React.FC<LyricsProps> = ({ isOpen, onClose }) => {
 
           {!currentTrack && !loading && (
             <div className="text-center py-24 max-w-2xl mx-auto">
-              <Music className="w-16 h-16 text-gray-300 mx-auto mb-6" />
-              <h3 className="text-2xl font-semibold text-gray-900 mb-2">
+              <Music className="w-16 h-16 text-muted-foreground/50 mx-auto mb-6" />
+              <h3 className="text-2xl font-semibold text-foreground mb-2">
                 No track playing
               </h3>
-              <p className="text-gray-600 text-lg">
+              <p className="text-muted-foreground text-lg">
                 Start playing a song to see its lyrics
               </p>
             </div>
