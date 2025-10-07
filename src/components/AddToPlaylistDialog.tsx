@@ -24,7 +24,7 @@ import { isCollectionDownloaded, downloadTrack } from "@/lib/downloads";
 import { localDb } from "@/lib/database";
 import { hybridData } from "@/lib/sync";
 import { logger } from "@/lib/logger";
-import { ListMusic, Plus, Loader2, Heart } from "lucide-react";
+import { ListMusic, Loader2, Heart, Circle, CircleDot } from "lucide-react";
 import { BaseItemDto } from "@jellyfin/sdk/lib/generated-client/models";
 import BlurHashImage from "@/components/BlurHashImage";
 import { APP_EVENTS, FavoriteStateChangedDetail } from "@/constants/events";
@@ -61,6 +61,17 @@ export default function AddToPlaylistDialog({
   );
   const [trackIsFavorite, setTrackIsFavorite] = useState<boolean>(false);
   const [stagedFavorite, setStagedFavorite] = useState<boolean>(false);
+  const FavoriteStatusIcon = stagedFavorite ? CircleDot : Circle;
+  let favoriteStatusIconClass = "w-5 h-5 transition-colors";
+  if (stagedFavorite !== trackIsFavorite) {
+    favoriteStatusIconClass += stagedFavorite
+      ? " text-green-600"
+      : " text-red-600";
+  } else {
+    favoriteStatusIconClass += stagedFavorite
+      ? " text-primary"
+      : " text-muted-foreground";
+  }
   const emitFavoriteEvent = (isFavorite: boolean) => {
     if (!trackId) return;
     try {
@@ -327,43 +338,22 @@ export default function AddToPlaylistDialog({
                   aria-pressed={stagedFavorite}
                 >
                   <CardContent className="p-3">
-                    <div className="flex items-center space-x-3">
+                    <div className="flex items-center gap-3">
                       <div className="w-12 h-12 rounded flex-shrink-0 overflow-hidden">
                         <div className="w-full h-full bg-gradient-to-br from-primary/20 to-primary/30 flex items-center justify-center">
                           <Heart className="w-6 h-6 text-primary fill-primary" />
                         </div>
                       </div>
                       <div className="flex-1 min-w-0">
-                        <h4 className="font-medium text-foreground truncate flex items-center gap-2">
+                        <h4 className="font-medium text-foreground truncate">
                           Favourites
-                          {trackIsFavorite && (
-                            <span className="text-[10px] px-1 py-0.5 rounded bg-muted text-muted-foreground">
-                              Added
-                            </span>
-                          )}
-                          {stagedFavorite !== trackIsFavorite && (
-                            <span
-                              className={`text-[10px] px-1 py-0.5 rounded border ${stagedFavorite ? "bg-green-100 text-green-700 border-green-200" : "bg-red-100 text-red-700 border-red-200"}`}
-                            >
-                              {stagedFavorite ? "Will add" : "Will remove"}
-                            </span>
-                          )}
-                          {!trackIsFavorite &&
-                            stagedFavorite === trackIsFavorite && (
-                              <span className="text-[10px] px-1 py-0.5 rounded bg-muted text-muted-foreground">
-                                Not added
-                              </span>
-                            )}
                         </h4>
-                        <p className="text-sm text-muted-foreground">
-                          {stagedFavorite !== trackIsFavorite
-                            ? stagedFavorite
-                              ? "Will mark this track as favourite"
-                              : "Will remove this track from favourites"
-                            : stagedFavorite
-                              ? "Track is currently favourited"
-                              : "Track is not favourited"}
-                        </p>
+                      </div>
+                      <div className="ml-auto flex-shrink-0">
+                        <FavoriteStatusIcon
+                          className={favoriteStatusIconClass}
+                          aria-hidden="true"
+                        />
                       </div>
                     </div>
                   </CardContent>
@@ -373,7 +363,17 @@ export default function AddToPlaylistDialog({
                   const desired = stagedContains[playlist.Id || ""];
                   const contains = desired; // reflect staged state
                   const isFavList = favoritePlaylistId === playlist.Id;
-
+                  const PlaylistStatusIcon = contains ? CircleDot : Circle;
+                  let playlistStatusIconClass = "w-5 h-5 transition-colors";
+                  if (desired !== original) {
+                    playlistStatusIconClass += desired
+                      ? " text-green-600"
+                      : " text-red-600";
+                  } else {
+                    playlistStatusIconClass += contains
+                      ? " text-primary"
+                      : " text-muted-foreground";
+                  }
                   return (
                     <Card
                       key={playlist.Id}
@@ -381,7 +381,7 @@ export default function AddToPlaylistDialog({
                       onClick={() => togglePlaylist(playlist.Id!)}
                     >
                       <CardContent className="p-3">
-                        <div className="flex items-center space-x-3">
+                        <div className="flex items-center gap-3">
                           <div className="w-12 h-12 rounded flex-shrink-0 overflow-hidden">
                             {getPlaylistImage(playlist) ? (
                               <BlurHashImage
@@ -399,29 +399,25 @@ export default function AddToPlaylistDialog({
                             )}
                           </div>
                           <div className="flex-1 min-w-0">
-                            <h4 className="font-medium text-foreground truncate items-center gap-2 w-full">
-                              {playlist.Name}
+                            <div className="flex items-center gap-2">
+                              <h4 className="font-medium text-foreground truncate">
+                                {playlist.Name}
+                              </h4>
                               {isFavList && (
                                 <span className="text-[10px] px-1 py-0.5 rounded bg-primary/10 text-primary border border-primary/20">
                                   Fav
                                 </span>
                               )}
-                              {original && (
-                                <span className="text-[10px] px-1 py-0.5 rounded bg-muted text-muted-foreground">
-                                  Added
-                                </span>
-                              )}
-                              {desired !== original && (
-                                <span
-                                  className={`text-[10px] px-1 py-0.5 rounded border ${desired ? "bg-green-100 text-green-700 border-green-200" : "bg-red-100 text-red-700 border-red-200"}`}
-                                >
-                                  {desired ? "Will add" : "Will remove"}
-                                </span>
-                              )}
-                            </h4>
+                            </div>
                             <p className="text-sm text-muted-foreground">
                               {playlist.ChildCount || 0} tracks
                             </p>
+                          </div>
+                          <div className="ml-auto flex-shrink-0">
+                            <PlaylistStatusIcon
+                              className={playlistStatusIconClass}
+                              aria-hidden="true"
+                            />
                           </div>
                         </div>
                       </CardContent>
