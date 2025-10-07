@@ -26,6 +26,7 @@ import { logger } from "@/lib/logger";
 import { ListMusic, Plus, Loader2, Heart } from "lucide-react";
 import { BaseItemDto } from "@jellyfin/sdk/lib/generated-client/models";
 import BlurHashImage from "@/components/BlurHashImage";
+import { APP_EVENTS, FavoriteStateChangedDetail } from "@/constants/events";
 
 interface AddToPlaylistDialogProps {
   open: boolean;
@@ -59,6 +60,19 @@ export default function AddToPlaylistDialog({
     null
   );
   const [trackIsFavorite, setTrackIsFavorite] = useState<boolean>(false);
+  const emitFavoriteEvent = (isFavorite: boolean) => {
+    if (!trackId) return;
+    try {
+      window.dispatchEvent(
+        new CustomEvent<FavoriteStateChangedDetail>(APP_EVENTS.favoriteStateChanged, {
+          detail: { trackId, isFavorite },
+        })
+      );
+    } catch (error) {
+      logger.error("Failed to dispatch favorite state change", error);
+    }
+  };
+
 
   // Get auth data from localStorage
   const authData = JSON.parse(localStorage.getItem("authData") || "{}");
@@ -188,6 +202,7 @@ export default function AddToPlaylistDialog({
                   trackId
                 );
                 setTrackIsFavorite(true);
+                emitFavoriteEvent(true);
               }
             }
             // If playlist is downloaded, auto-download this track
@@ -293,6 +308,7 @@ export default function AddToPlaylistDialog({
                             trackId
                           );
                           setTrackIsFavorite(true);
+                          emitFavoriteEvent(true);
                         }
                         onOpenChange(false);
                       } catch (e) {

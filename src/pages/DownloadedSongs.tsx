@@ -16,6 +16,7 @@ import TrackList from "@/components/TrackList";
 import BackButton from "@/components/BackButton";
 import { showError } from "@/utils/toast";
 import { formatDuration } from "@/utils/media";
+import { APP_EVENTS, FavoriteStateChangedDetail } from "@/constants/events";
 
 const DownloadedSongs: React.FC = () => {
   const [items, setItems] = useState<any[]>([]);
@@ -100,6 +101,32 @@ const DownloadedSongs: React.FC = () => {
     window.addEventListener("downloadsUpdate", onUpdate);
     return () => window.removeEventListener("downloadsUpdate", onUpdate);
   }, [authData.accessToken, authData.serverAddress, isAuthenticated]);
+
+  useEffect(() => {
+    const trackIds = new Set(
+      (tracks || []).map((track) => track.Id).filter(Boolean) as string[]
+    );
+    const handler = (event: Event) => {
+      const { detail } = event as CustomEvent<FavoriteStateChangedDetail>;
+      if (!detail?.trackId || !trackIds.has(detail.trackId)) return;
+      setTrackFavorites((prev) => {
+        if (prev[detail.trackId] === detail.isFavorite) {
+          return prev;
+        }
+        return { ...prev, [detail.trackId]: detail.isFavorite };
+      });
+    };
+    window.addEventListener(
+      APP_EVENTS.favoriteStateChanged,
+      handler as EventListener
+    );
+    return () => {
+      window.removeEventListener(
+        APP_EVENTS.favoriteStateChanged,
+        handler as EventListener
+      );
+    };
+  }, [tracks]);
 
   const toggleTrackFavorite = async (trackId: string) => {
     if (!isAuthenticated()) return; // silently ignore offline

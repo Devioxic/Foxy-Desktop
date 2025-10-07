@@ -31,6 +31,7 @@ import {
 import { BaseItemDto } from "@jellyfin/sdk/lib/generated-client/models";
 import { useAuthData } from "@/hooks/useAuthData";
 import BackButton from "@/components/BackButton";
+import { APP_EVENTS, FavoriteStateChangedDetail } from "@/constants/events";
 
 interface Track extends BaseItemDto {
   AlbumArtist?: string;
@@ -75,6 +76,38 @@ const FavouritePlaylistView = () => {
       } catch {}
     })();
   }, []);
+
+  useEffect(() => {
+    const trackIds = new Set(
+      (tracks || []).map((track) => track.Id).filter(Boolean) as string[]
+    );
+    const handler = (event: Event) => {
+      const { detail } = event as CustomEvent<FavoriteStateChangedDetail>;
+      if (!detail?.trackId) return;
+      if (!trackIds.has(detail.trackId)) return;
+      if (!detail.isFavorite) {
+        setTracks((prev) =>
+          prev.filter((track) => track.Id !== detail.trackId)
+        );
+      }
+      setTrackFavorites((prev) => {
+        if (prev[detail.trackId] === detail.isFavorite) {
+          return prev;
+        }
+        return { ...prev, [detail.trackId]: detail.isFavorite };
+      });
+    };
+    window.addEventListener(
+      APP_EVENTS.favoriteStateChanged,
+      handler as EventListener
+    );
+    return () => {
+      window.removeEventListener(
+        APP_EVENTS.favoriteStateChanged,
+        handler as EventListener
+      );
+    };
+  }, [tracks]);
 
   const loadFavoriteTracks = async () => {
     setLoading(true);
