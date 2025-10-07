@@ -263,9 +263,15 @@ const MusicPlayer: React.FC<MusicPlayerProps> = ({
         setIsFavorite(detail.isFavorite);
       }
     };
-    window.addEventListener(APP_EVENTS.favoriteStateChanged, handler as EventListener);
+    window.addEventListener(
+      APP_EVENTS.favoriteStateChanged,
+      handler as EventListener
+    );
     return () => {
-      window.removeEventListener(APP_EVENTS.favoriteStateChanged, handler as EventListener);
+      window.removeEventListener(
+        APP_EVENTS.favoriteStateChanged,
+        handler as EventListener
+      );
     };
   }, [currentTrackId]);
 

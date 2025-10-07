@@ -64,15 +64,17 @@ export default function AddToPlaylistDialog({
     if (!trackId) return;
     try {
       window.dispatchEvent(
-        new CustomEvent<FavoriteStateChangedDetail>(APP_EVENTS.favoriteStateChanged, {
-          detail: { trackId, isFavorite },
-        })
+        new CustomEvent<FavoriteStateChangedDetail>(
+          APP_EVENTS.favoriteStateChanged,
+          {
+            detail: { trackId, isFavorite },
+          }
+        )
       );
     } catch (error) {
       logger.error("Failed to dispatch favorite state change", error);
     }
   };
-
 
   // Get auth data from localStorage
   const authData = JSON.parse(localStorage.getItem("authData") || "{}");
