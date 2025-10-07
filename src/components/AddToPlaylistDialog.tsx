@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -109,6 +109,59 @@ export default function AddToPlaylistDialog({
     return playlist.ImageBlurHashes.Primary[primaryImageTag];
   };
 
+  const primePlaylistCache = useCallback(
+    async (playlistsData: BaseItemDto[]) => {
+      try {
+        if (!playlistsData.length) return;
+        await localDb.initialize();
+        try {
+          await localDb.savePlaylists(playlistsData);
+        } catch (saveError) {
+          logger.warn("Failed to cache playlists metadata", saveError);
+        }
+
+        let tracksBuffer: BaseItemDto[] = [];
+        for (const playlist of playlistsData) {
+          if (!playlist.Id) continue;
+          try {
+            const items = await getPlaylistItems(playlist.Id);
+            const normalized = (items || []).filter((item) => item?.Id);
+            const entries = normalized.map((item, index) => ({
+              playlistItemId:
+                ((item as any).PlaylistItemId as string | undefined) ||
+                `${playlist.Id}:${item.Id}:${index}`,
+              trackId: item.Id!,
+              sortIndex: index,
+            }));
+            await localDb.replacePlaylistItems(playlist.Id, entries);
+            const audioTracks = normalized.filter(
+              (item) => item.Type === "Audio" && item.Id
+            );
+            if (audioTracks.length) {
+              tracksBuffer.push(...audioTracks);
+              if (tracksBuffer.length >= 200) {
+                await localDb.saveTracks(tracksBuffer);
+                tracksBuffer = [];
+              }
+            }
+          } catch (error) {
+            logger.warn(
+              `Failed to prime playlist cache for ${playlist.Name || playlist.Id}`,
+              error
+            );
+          }
+        }
+
+        if (tracksBuffer.length) {
+          await localDb.saveTracks(tracksBuffer);
+        }
+      } catch (error) {
+        logger.warn("Prime playlist cache failed", error);
+      }
+    },
+    []
+  );
+
   useEffect(() => {
     if (open) {
       loadPlaylists();
@@ -130,25 +183,108 @@ export default function AddToPlaylistDialog({
       );
       setFavoritePlaylistId(fav?.Id || null);
 
-      // Determine if track already added to each playlist (fetch items lazily in parallel but capped)
+      const containsMap: Record<string, boolean> = {};
+      const entryIds: Record<string, string | null> = {};
+
       if (trackId) {
-        const containsMap: Record<string, boolean> = {};
-        const entryIds: Record<string, string | null> = {};
-        await Promise.all(
-          playlistsData.slice(0, 25).map(async (pl) => {
+        try {
+          await localDb.initialize();
+          let membership: Record<string, { playlistItemId: string | null }> =
+            {};
+          const hasCachedItems = await localDb.hasPlaylistItemsCached();
+
+          if (hasCachedItems) {
+            membership = await localDb.getTrackPlaylistMembership(trackId);
+          } else if (playlistsData.length) {
+            const remoteMembership: Record<
+              string,
+              { playlistItemId: string | null }
+            > = {};
+            const tracksToCache: BaseItemDto[] = [];
+
+            await Promise.all(
+              playlistsData.slice(0, 25).map(async (pl) => {
+                if (!pl.Id) return;
+                try {
+                  const items = await getPlaylistItems(pl.Id);
+                  const match = items.find((item: any) => item.Id === trackId);
+                  if (match) {
+                    remoteMembership[pl.Id] = {
+                      playlistItemId: match.PlaylistItemId || null,
+                    };
+                  }
+
+                  const normalized = (items || []).filter((item) => item?.Id);
+                  const entries = normalized.map((item, index) => ({
+                    playlistItemId:
+                      ((item as any).PlaylistItemId as string | undefined) ||
+                      `${pl.Id}:${item.Id}:${index}`,
+                    trackId: item.Id!,
+                    sortIndex: index,
+                  }));
+                  await localDb.replacePlaylistItems(pl.Id, entries);
+
+                  const audioTracks = normalized.filter(
+                    (item) => item.Type === "Audio" && item.Id
+                  );
+                  if (audioTracks.length) {
+                    tracksToCache.push(...audioTracks);
+                  }
+                } catch (error) {
+                  logger.warn(
+                    `Failed to fetch playlist items for ${pl.Name || pl.Id}`,
+                    error
+                  );
+                }
+              })
+            );
+
+            if (tracksToCache.length) {
+              await localDb.saveTracks(tracksToCache);
+            }
+
             try {
-              if (!pl.Id) return;
-              const items = await getPlaylistItems(pl.Id);
-              const it = items.find((it: any) => it.Id === trackId);
-              containsMap[pl.Id] = !!it;
-              entryIds[pl.Id] = it?.PlaylistItemId || null;
-            } catch {}
-          })
-        );
-        setPlaylistContains(containsMap);
-        setStagedContains(containsMap);
-        setEntryIdMap(entryIds);
+              await localDb.savePlaylists(playlistsData);
+            } catch (saveError) {
+              logger.warn(
+                "Failed to persist playlist metadata locally",
+                saveError
+              );
+            }
+
+            membership = remoteMembership;
+
+            // Prime the rest of the cache asynchronously for future loads
+            void primePlaylistCache(playlistsData);
+          }
+
+          for (const playlist of playlistsData) {
+            if (!playlist.Id) continue;
+            const info = membership[playlist.Id];
+            containsMap[playlist.Id] = !!info;
+            entryIds[playlist.Id] = info?.playlistItemId ?? null;
+          }
+        } catch (error) {
+          logger.warn("Unable to resolve playlist membership", error);
+          for (const playlist of playlistsData) {
+            if (!playlist.Id) continue;
+            containsMap[playlist.Id] = false;
+            entryIds[playlist.Id] = null;
+          }
+        }
       }
+
+      if (!trackId) {
+        for (const playlist of playlistsData) {
+          if (!playlist.Id) continue;
+          containsMap[playlist.Id] = false;
+          entryIds[playlist.Id] = null;
+        }
+      }
+
+      setPlaylistContains(containsMap);
+      setStagedContains(containsMap);
+      setEntryIdMap(entryIds);
 
       // Check favourite status of track
       try {
@@ -193,6 +329,7 @@ export default function AddToPlaylistDialog({
       return;
     }
     setSaving(true);
+    const playlistsToRefresh = new Set<string>();
     try {
       const toAdd: string[] = [];
       const toRemove: string[] = [];
@@ -207,6 +344,7 @@ export default function AddToPlaylistDialog({
         toAdd.map(async (pid) => {
           try {
             await addItemsToPlaylist(pid, [trackId]);
+            playlistsToRefresh.add(pid);
             // If favourite playlist, also favourite the track
             if (
               favoritePlaylistId &&
@@ -259,6 +397,7 @@ export default function AddToPlaylistDialog({
             }
             if (entryId) {
               await removeItemsFromPlaylist(pid, [entryId]);
+              playlistsToRefresh.add(pid);
               setPlaylists((prev) =>
                 prev.map((p) =>
                   p.Id === pid
@@ -293,6 +432,44 @@ export default function AddToPlaylistDialog({
       try {
         window.dispatchEvent(new CustomEvent("syncUpdate"));
       } catch {}
+
+      if (playlistsToRefresh.size > 0) {
+        const targetPlaylists = playlists.filter(
+          (pl) => pl.Id && playlistsToRefresh.has(pl.Id)
+        );
+        if (targetPlaylists.length) {
+          await primePlaylistCache(targetPlaylists);
+          if (trackId) {
+            try {
+              await localDb.initialize();
+              const refreshedMembership =
+                await localDb.getTrackPlaylistMembership(trackId);
+              setPlaylistContains((prev) => {
+                const next = { ...prev };
+                for (const pl of targetPlaylists) {
+                  if (!pl.Id) continue;
+                  next[pl.Id] = !!refreshedMembership[pl.Id];
+                }
+                return next;
+              });
+              setEntryIdMap((prev) => {
+                const next = { ...prev };
+                for (const pl of targetPlaylists) {
+                  if (!pl.Id) continue;
+                  next[pl.Id] =
+                    refreshedMembership[pl.Id]?.playlistItemId ?? null;
+                }
+                return next;
+              });
+            } catch (error) {
+              logger.warn(
+                "Failed to update local membership state after changes",
+                error
+              );
+            }
+          }
+        }
+      }
       onOpenChange(false);
     } finally {
       setSaving(false);

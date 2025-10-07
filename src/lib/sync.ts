@@ -7,6 +7,7 @@ import {
   getArtistTracks,
   getAlbumInfo,
   getArtistInfo,
+  getPlaylistItems,
 } from "./jellyfin";
 import { BaseItemDto } from "@jellyfin/sdk/lib/generated-client/models";
 import { logger } from "./logger";
@@ -184,36 +185,12 @@ class SyncService {
         logger.warn("Recomputing artist counts (post-tracks) failed", e);
       }
 
-      // Stage 4: Sync Playlists
-      notifyProgress({
-        stage: "playlists",
-        current: 0,
-        total: 0,
-        message: "Fetching playlists from server...",
-      });
-
-      const playlists = await getAllPlaylists();
-
-      if (playlists.length > 0) {
-        notifyProgress({
-          stage: "playlists",
-          current: 0,
-          total: playlists.length,
-          message: "Saving playlists to local database...",
-        });
-
-        await localDb.savePlaylists(playlists);
-
-        notifyProgress({
-          stage: "playlists",
-          current: playlists.length,
-          total: playlists.length,
-          message: "Playlists synchronized successfully",
-        });
-      }
+      await this.syncPlaylistsWithItems(notifyProgress);
 
       // Update sync metadata
       await localDb.setSyncMetadata("lastFullSync", Date.now().toString());
+      await this.syncPlaylistsWithItems(notifyProgress);
+
       await localDb.setSyncMetadata(
         "lastIncrementalSync",
         Date.now().toString()
@@ -394,6 +371,111 @@ class SyncService {
     }
 
     await localDb["saveDatabase"]();
+  }
+
+  private async syncPlaylistsWithItems(
+    notifyProgress: (progress: SyncProgress) => void
+  ): Promise<void> {
+    notifyProgress({
+      stage: "playlists",
+      current: 0,
+      total: 0,
+      message: "Fetching playlists from server...",
+    });
+
+    const playlists = await getAllPlaylists();
+
+    if (!playlists.length) {
+      await localDb.savePlaylists([]);
+      notifyProgress({
+        stage: "playlists",
+        current: 0,
+        total: 0,
+        message: "No playlists found",
+      });
+      return;
+    }
+
+    notifyProgress({
+      stage: "playlists",
+      current: 0,
+      total: playlists.length,
+      message: "Saving playlists to local database...",
+    });
+
+    await localDb.savePlaylists(playlists);
+
+    const concurrency = 3;
+    let processed = 0;
+    let tracksBuffer: BaseItemDto[] = [];
+
+    for (let i = 0; i < playlists.length; i += concurrency) {
+      if (this.abortController?.signal.aborted) {
+        throw new Error("Sync was aborted");
+      }
+
+      const slice = playlists.slice(i, i + concurrency);
+      await Promise.all(
+        slice.map(async (playlist) => {
+          if (!playlist.Id) return;
+          try {
+            const items = await getPlaylistItems(playlist.Id);
+            const normalized = (items || []).filter((item) => item?.Id);
+            const entries = normalized.map((item, index) => {
+              const playlistItemId =
+                ((item as any).PlaylistItemId as string | undefined) ||
+                `${playlist.Id}:${item.Id}:${index}`;
+              return {
+                playlistItemId,
+                trackId: item.Id!,
+                sortIndex: index,
+              };
+            });
+            await localDb.replacePlaylistItems(playlist.Id, entries);
+
+            const audioTracks = normalized.filter(
+              (item) => item.Type === "Audio" && item.Id
+            );
+            if (audioTracks.length) {
+              tracksBuffer.push(...audioTracks);
+              if (tracksBuffer.length >= 200) {
+                await localDb.saveTracks(tracksBuffer);
+                tracksBuffer = [];
+              }
+            }
+          } catch (error) {
+            logger.warn(
+              `Failed to fetch playlist items for ${playlist.Name || playlist.Id}`,
+              error
+            );
+            try {
+              await localDb.replacePlaylistItems(playlist.Id, []);
+            } catch (dbError) {
+              logger.warn("Failed to clear cached playlist items", dbError);
+            }
+          }
+        })
+      );
+
+      processed += slice.length;
+      notifyProgress({
+        stage: "playlists",
+        current: processed,
+        total: playlists.length,
+        message: `Cached ${processed}/${playlists.length} playlists`,
+      });
+    }
+
+    if (tracksBuffer.length) {
+      await localDb.saveTracks(tracksBuffer);
+    }
+
+    notifyProgress({
+      stage: "playlists",
+      current: playlists.length,
+      total: playlists.length,
+      message: "Playlists synchronized successfully",
+    });
   }
 }
 
