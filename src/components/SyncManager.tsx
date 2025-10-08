@@ -385,7 +385,6 @@ export default function SyncManager({ onSyncComplete }: SyncManagerProps) {
             changes
           </div>
           <div>• Sync runs automatically in the background when needed</div>
-          <div>• Your music will work offline after the first sync</div>
         </CardContent>
       </Card>
     </div>

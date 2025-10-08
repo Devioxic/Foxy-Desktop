@@ -875,6 +875,46 @@ class LocalDatabase {
     return results.length > 0 ? this.rowToPlaylist(results[0]) : null;
   }
 
+  async updatePlaylistStats(
+    playlistId: string,
+    childCount: number,
+    cumulativeRunTimeTicks?: number | null
+  ): Promise<void> {
+    if (!this.db) throw new Error("Database not initialized");
+    const timestamp = Date.now();
+
+    let runtimeValue =
+      cumulativeRunTimeTicks !== undefined ? cumulativeRunTimeTicks : null;
+    if (runtimeValue === null) {
+      const existing = this.exec(
+        "SELECT cumulative_run_time_ticks FROM playlists WHERE id = ? LIMIT 1",
+        [playlistId]
+      );
+      runtimeValue = existing.length
+        ? (existing[0].cumulative_run_time_ticks as number | null)
+        : null;
+    }
+
+    const stmt = this.db.prepare(
+      `UPDATE playlists
+         SET child_count = ?,
+             cumulative_run_time_ticks = ?,
+             updated_at = ?,
+             sync_timestamp = ?
+       WHERE id = ?`
+    );
+    stmt.run([
+      childCount,
+      runtimeValue ?? null,
+      timestamp,
+      timestamp,
+      playlistId,
+    ]);
+    stmt.free();
+
+    await this.saveDatabase();
+  }
+
   async replacePlaylistItems(
     playlistId: string,
     items: Array<{

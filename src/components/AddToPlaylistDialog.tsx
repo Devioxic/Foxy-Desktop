@@ -126,6 +126,10 @@ export default function AddToPlaylistDialog({
           try {
             const items = await getPlaylistItems(playlist.Id);
             const normalized = (items || []).filter((item) => item?.Id);
+            const totalTicks = normalized.reduce(
+              (acc, item) => acc + (item.RunTimeTicks || 0),
+              0
+            );
             const entries = normalized.map((item, index) => ({
               playlistItemId:
                 ((item as any).PlaylistItemId as string | undefined) ||
@@ -134,6 +138,11 @@ export default function AddToPlaylistDialog({
               sortIndex: index,
             }));
             await localDb.replacePlaylistItems(playlist.Id, entries);
+            await localDb.updatePlaylistStats(
+              playlist.Id,
+              normalized.length,
+              totalTicks
+            );
             const audioTracks = normalized.filter(
               (item) => item.Type === "Audio" && item.Id
             );
@@ -215,6 +224,10 @@ export default function AddToPlaylistDialog({
                   }
 
                   const normalized = (items || []).filter((item) => item?.Id);
+                  const totalTicks = normalized.reduce(
+                    (acc, item) => acc + (item.RunTimeTicks || 0),
+                    0
+                  );
                   const entries = normalized.map((item, index) => ({
                     playlistItemId:
                       ((item as any).PlaylistItemId as string | undefined) ||
@@ -223,6 +236,11 @@ export default function AddToPlaylistDialog({
                     sortIndex: index,
                   }));
                   await localDb.replacePlaylistItems(pl.Id, entries);
+                  await localDb.updatePlaylistStats(
+                    pl.Id,
+                    normalized.length,
+                    totalTicks
+                  );
 
                   const audioTracks = normalized.filter(
                     (item) => item.Type === "Audio" && item.Id
@@ -468,6 +486,19 @@ export default function AddToPlaylistDialog({
               );
             }
           }
+        }
+      }
+      if (playlistsToRefresh.size > 0) {
+        try {
+          playlistsToRefresh.forEach((pid) => {
+            window.dispatchEvent(
+              new CustomEvent("playlistItemsUpdated", {
+                detail: { playlistId: pid },
+              })
+            );
+          });
+        } catch (error) {
+          logger.warn("Failed to broadcast playlist updates", error);
         }
       }
       onOpenChange(false);

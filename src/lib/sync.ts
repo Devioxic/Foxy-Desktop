@@ -421,6 +421,10 @@ class SyncService {
           try {
             const items = await getPlaylistItems(playlist.Id);
             const normalized = (items || []).filter((item) => item?.Id);
+            const totalTicks = normalized.reduce(
+              (acc, item) => acc + (item.RunTimeTicks || 0),
+              0
+            );
             const entries = normalized.map((item, index) => {
               const playlistItemId =
                 ((item as any).PlaylistItemId as string | undefined) ||
@@ -432,6 +436,11 @@ class SyncService {
               };
             });
             await localDb.replacePlaylistItems(playlist.Id, entries);
+            await localDb.updatePlaylistStats(
+              playlist.Id,
+              normalized.length,
+              totalTicks
+            );
 
             const audioTracks = normalized.filter(
               (item) => item.Type === "Audio" && item.Id
@@ -450,6 +459,7 @@ class SyncService {
             );
             try {
               await localDb.replacePlaylistItems(playlist.Id, []);
+              await localDb.updatePlaylistStats(playlist.Id, 0, 0);
             } catch (dbError) {
               logger.warn("Failed to clear cached playlist items", dbError);
             }
@@ -778,7 +788,7 @@ export class HybridDataService {
         await localDb.initialize();
         const localPlaylists = await localDb.getPlaylists();
         if (localPlaylists.length > 0) {
-          logger.info(
+          logger.debug(
             `Retrieved ${localPlaylists.length} playlists from local database`
           );
           return localPlaylists;

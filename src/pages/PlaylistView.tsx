@@ -172,8 +172,22 @@ const PlaylistView = () => {
         getPlaylistItems(playlistId!),
       ]);
 
-      setPlaylistInfo(info);
-      setTracks(items as Track[]);
+      const playlistItems = (items as Track[]) || [];
+      const runtimeTicks = playlistItems.reduce(
+        (acc, track) => acc + (track.RunTimeTicks || 0),
+        0
+      );
+      setTracks(playlistItems);
+      setPlaylistInfo(
+        info
+          ? {
+              ...info,
+              ChildCount: playlistItems.length,
+              CumulativeRunTimeTicks:
+                runtimeTicks > 0 ? runtimeTicks : info.CumulativeRunTimeTicks,
+            }
+          : info
+      );
       if (playlistId) {
         try {
           const dl = await isCollectionDownloaded(playlistId);
@@ -428,16 +442,23 @@ const PlaylistView = () => {
   };
 
   useEffect(() => {
-    const onRemoved = (e: any) => {
-      if (!playlistId) return;
+    if (!playlistId) return undefined;
+    const handleRefresh = (e: Event) => {
       try {
         const { playlistId: pid } = (e as CustomEvent).detail || {};
-        if (pid === playlistId) loadPlaylistData();
+        if (pid === playlistId) {
+          loadPlaylistData();
+        }
       } catch {}
     };
-    window.addEventListener("playlistItemRemoved", onRemoved as any);
-    return () =>
-      window.removeEventListener("playlistItemRemoved", onRemoved as any);
+
+    window.addEventListener("playlistItemRemoved", handleRefresh as any);
+    window.addEventListener("playlistItemsUpdated", handleRefresh as any);
+
+    return () => {
+      window.removeEventListener("playlistItemRemoved", handleRefresh as any);
+      window.removeEventListener("playlistItemsUpdated", handleRefresh as any);
+    };
   }, [playlistId]);
 
   if (loading) {
@@ -525,9 +546,7 @@ const PlaylistView = () => {
             </div>
 
             <div className="flex items-center gap-4 text-sm text-muted-foreground">
-              {playlistInfo.ChildCount && (
-                <span>{playlistInfo.ChildCount} tracks</span>
-              )}
+              <span>{tracks.length} tracks</span>
               {playlistInfo.CumulativeRunTimeTicks && (
                 <>
                   <span>•</span>
@@ -555,6 +574,24 @@ const PlaylistView = () => {
               >
                 <Shuffle className="w-4 h-4 mr-2" />
                 Shuffle
+              </Button>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={handleToggleDownload}
+                disabled={downloading}
+                className="p-1 text-muted-foreground hover:text-primary hover:bg-accent"
+                title={isDownloaded ? "Remove download" : "Download"}
+              >
+                {downloading ? (
+                  <Loader2 className="w-4 h-4 animate-spin text-muted-foreground" />
+                ) : (
+                  <Download
+                    className={`w-4 h-4 ${
+                      isDownloaded ? "text-primary" : "text-muted-foreground"
+                    }`}
+                  />
+                )}
               </Button>
               {/* Playlist actions dropdown */}
               <Dropdown

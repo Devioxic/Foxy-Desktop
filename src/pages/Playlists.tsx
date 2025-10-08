@@ -1,4 +1,10 @@
-import React, { useState, useEffect, useMemo } from "react";
+import React, {
+  useState,
+  useEffect,
+  useMemo,
+  useCallback,
+  useRef,
+} from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { Input } from "@/components/ui/input";
 import { logger } from "@/lib/logger";
@@ -20,7 +26,7 @@ import {
   Heart,
   Download,
 } from "lucide-react";
-import { getAllPlaylists, createPlaylist } from "@/lib/jellyfin";
+import { createPlaylist } from "@/lib/jellyfin";
 import { hybridData } from "@/lib/sync";
 import { BaseItemDto } from "@jellyfin/sdk/lib/generated-client/models";
 
@@ -32,7 +38,7 @@ const PLAYLISTS_PER_PAGE = 48; // 6 columns × 8 rows on large screens
 
 const Playlists = () => {
   const navigate = useNavigate();
-  const { authData, isAuthenticated } = useAuthData();
+  const { authData } = useAuthData();
   const [searchParams, setSearchParams] = useSearchParams();
 
   const [playlists, setPlaylists] = useState<Playlist[]>([]);
@@ -41,15 +47,65 @@ const Playlists = () => {
   const [searchQuery, setSearchQuery] = useState("");
   const [currentPage, setCurrentPage] = useState(1);
   const [showCreateDialog, setShowCreateDialog] = useState(false);
+  const refreshTimeout = useRef<number | null>(null);
+
+  const isLoggedIn = Boolean(authData?.accessToken && authData?.serverAddress);
+
+  const loadPlaylists = useCallback(async () => {
+    if (!isLoggedIn) {
+      setLoading(false);
+      navigate("/login");
+      return;
+    }
+
+    setLoading(true);
+    try {
+      // Use hybrid data service for better performance
+      const playlistsData = await hybridData.getPlaylists();
+
+      // Sort playlists alphabetically
+      const sortedPlaylists = playlistsData.sort((a, b) =>
+        (a.Name || "").localeCompare(b.Name || "")
+      );
+
+      setPlaylists(sortedPlaylists);
+      setFilteredPlaylists(sortedPlaylists);
+    } catch (error) {
+      logger.error("Failed to load playlists", error);
+    } finally {
+      setLoading(false);
+    }
+  }, [isLoggedIn, navigate]);
+
+  const schedulePlaylistsReload = useCallback(() => {
+    if (refreshTimeout.current !== null) return;
+    refreshTimeout.current = window.setTimeout(() => {
+      refreshTimeout.current = null;
+      void loadPlaylists();
+    }, 150);
+  }, [loadPlaylists]);
 
   useEffect(() => {
-    loadPlaylists();
+    schedulePlaylistsReload();
 
-    // Refresh when a syncUpdate event fires (e.g., after delete)
-    const onSyncUpdate = () => loadPlaylists();
-    window.addEventListener("syncUpdate", onSyncUpdate);
-    return () => window.removeEventListener("syncUpdate", onSyncUpdate);
-  }, []);
+    const handleRefresh = (_event?: Event) => {
+      schedulePlaylistsReload();
+    };
+
+    window.addEventListener("syncUpdate", handleRefresh);
+    window.addEventListener("playlistItemsUpdated", handleRefresh);
+    window.addEventListener("playlistItemRemoved", handleRefresh);
+
+    return () => {
+      if (refreshTimeout.current !== null) {
+        window.clearTimeout(refreshTimeout.current);
+        refreshTimeout.current = null;
+      }
+      window.removeEventListener("syncUpdate", handleRefresh);
+      window.removeEventListener("playlistItemsUpdated", handleRefresh);
+      window.removeEventListener("playlistItemRemoved", handleRefresh);
+    };
+  }, [schedulePlaylistsReload]);
 
   // Initialize from URL and sync search input
   useEffect(() => {
@@ -108,35 +164,6 @@ const Playlists = () => {
       return arr.indexOf(page) === index;
     });
   }, [currentPage, totalPages]);
-
-  const loadPlaylists = async () => {
-    setLoading(true);
-    try {
-      if (!isAuthenticated()) {
-        navigate("/login");
-        return;
-      }
-
-      // Use hybrid data service for better performance
-      const playlistsData = await hybridData.getPlaylists();
-
-      // Sort playlists alphabetically
-      const sortedPlaylists = playlistsData.sort((a, b) =>
-        (a.Name || "").localeCompare(b.Name || "")
-      );
-
-      setPlaylists(sortedPlaylists);
-      setFilteredPlaylists(sortedPlaylists);
-    } catch (error) {
-      logger.error("Failed to load playlists", error);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleCreateNewPlaylist = () => {
-    setShowCreateDialog(true);
-  };
 
   const handlePlaylistCreation = async (name: string) => {
     try {

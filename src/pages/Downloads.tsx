@@ -76,7 +76,19 @@ const Downloads: React.FC = () => {
     load();
     const onUpdate = () => load();
     window.addEventListener("downloadsUpdate", onUpdate);
-    return () => window.removeEventListener("downloadsUpdate", onUpdate);
+    window.addEventListener("playlistItemsUpdated", onUpdate as EventListener);
+    window.addEventListener("playlistItemRemoved", onUpdate as EventListener);
+    return () => {
+      window.removeEventListener("downloadsUpdate", onUpdate);
+      window.removeEventListener(
+        "playlistItemsUpdated",
+        onUpdate as EventListener
+      );
+      window.removeEventListener(
+        "playlistItemRemoved",
+        onUpdate as EventListener
+      );
+    };
   }, []);
 
   // No per-track list here: downloaded tracks live under
