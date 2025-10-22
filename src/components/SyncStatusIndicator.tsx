@@ -135,7 +135,7 @@ export default function SyncStatusIndicator({
   };
 
   const getStatusColor = () => {
-  if (offlineActive) return "text-red-500";
+    if (offlineActive) return "text-red-500";
     if (isSyncing) return "text-blue-600";
     if (!syncStatus || syncStatus.lastFullSync === 0) return "text-yellow-600";
     return "text-green-600";

@@ -29,10 +29,7 @@ const OfflineMode: React.FC<OfflineModeProps> = ({
 
         {showDownloadsButton && (
           <div className="space-y-3">
-            <Button
-              onClick={() => navigate("/downloads")}
-              className="w-full"
-            >
+            <Button onClick={() => navigate("/downloads")} className="w-full">
               <Download className="w-4 h-4 mr-2" />
               View Downloads
             </Button>
