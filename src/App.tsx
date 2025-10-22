@@ -13,8 +13,13 @@ import ErrorBoundary from "@/components/ErrorBoundary";
 import LoadingSkeleton from "@/components/LoadingSkeleton";
 import Sidebar from "@/components/Sidebar";
 import MusicPlayer from "@/components/MusicPlayer";
+import OfflineMode from "@/components/OfflineMode";
 import { Toaster } from "sonner"; // Global toast renderer
 import { ThemeProvider } from "next-themes";
+import {
+  OfflineModeProvider,
+  useOfflineModeContext,
+} from "@/contexts/OfflineModeContext";
 
 // Lazy load components
 const ServerAddressPage = React.lazy(() => import("@/pages/ServerAddressPage"));
@@ -56,6 +61,43 @@ const LayoutFallback: React.FC<{ activeSection: string; type: any }> = ({
     <MusicPlayer />
   </div>
 );
+
+const OfflineGuard: React.FC<{
+  allowOffline?: boolean;
+  title?: string;
+  message?: string;
+  showDownloadsButton?: boolean;
+  children: React.ReactNode;
+}> = ({
+  allowOffline = false,
+  title,
+  message,
+  showDownloadsButton = true,
+  children,
+}) => {
+  const { isOffline } = useOfflineModeContext();
+
+  if (isOffline && !allowOffline) {
+    return (
+      <div className="min-h-screen bg-background">
+        <Sidebar />
+        <div className="ml-64 p-6 pb-28">
+          <OfflineMode
+            title={title ?? "Offline Mode Active"}
+            message={
+              message ??
+              "This section isn't available while the server is offline. Check your downloads to enjoy your offline library."
+            }
+            showDownloadsButton={showDownloadsButton}
+          />
+        </div>
+        <MusicPlayer />
+      </div>
+    );
+  }
+
+  return <>{children}</>;
+};
 
 const AppContent = () => {
   const { isAuthenticated } = useAuthData();
@@ -104,117 +146,159 @@ const AppContent = () => {
           <Route
             path="/home"
             element={
-              <Suspense
-                fallback={<LayoutFallback activeSection="home" type="home" />}
-              >
-                <Home />
-              </Suspense>
+              <OfflineGuard title="Home is unavailable offline">
+                <Suspense
+                  fallback={
+                    <LayoutFallback activeSection="home" type="home" />
+                  }
+                >
+                  <Home />
+                </Suspense>
+              </OfflineGuard>
             }
           />
           <Route
             path="/search"
             element={
-              <Suspense
-                fallback={<LayoutFallback activeSection="search" type="home" />}
-              >
-                <SearchPage />
-              </Suspense>
+              <OfflineGuard title="Search is unavailable offline">
+                <Suspense
+                  fallback={
+                    <LayoutFallback activeSection="search" type="home" />
+                  }
+                >
+                  <SearchPage />
+                </Suspense>
+              </OfflineGuard>
             }
           />
           <Route
             path="/library"
             element={
-              <Suspense
-                fallback={
-                  <LayoutFallback activeSection="library" type="library" />
-                }
-              >
-                <Library />
-              </Suspense>
+              <OfflineGuard title="Library is unavailable offline">
+                <Suspense
+                  fallback={
+                    <LayoutFallback activeSection="library" type="library" />
+                  }
+                >
+                  <Library />
+                </Suspense>
+              </OfflineGuard>
             }
           />
           <Route
             path="/artists"
             element={
-              <Suspense
-                fallback={
-                  <LayoutFallback activeSection="artists" type="artists" />
-                }
-              >
-                <Artists />
-              </Suspense>
+              <OfflineGuard title="Artists are unavailable offline">
+                <Suspense
+                  fallback={
+                    <LayoutFallback activeSection="artists" type="artists" />
+                  }
+                >
+                  <Artists />
+                </Suspense>
+              </OfflineGuard>
             }
           />
           <Route
             path="/albums"
             element={
-              <Suspense
-                fallback={
-                  <LayoutFallback activeSection="albums" type="albums" />
-                }
-              >
-                <Albums />
-              </Suspense>
+              <OfflineGuard title="Albums are unavailable offline">
+                <Suspense
+                  fallback={
+                    <LayoutFallback activeSection="albums" type="albums" />
+                  }
+                >
+                  <Albums />
+                </Suspense>
+              </OfflineGuard>
             }
           />
           <Route
             path="/playlists"
             element={
-              <Suspense
-                fallback={
-                  <LayoutFallback activeSection="playlists" type="playlists" />
-                }
-              >
-                <Playlists />
-              </Suspense>
+              <OfflineGuard title="Playlists are unavailable offline">
+                <Suspense
+                  fallback={
+                    <LayoutFallback activeSection="playlists" type="playlists" />
+                  }
+                >
+                  <Playlists />
+                </Suspense>
+              </OfflineGuard>
             }
           />
           <Route
             path="/downloads"
             element={
-              <Suspense
-                fallback={
-                  <LayoutFallback activeSection="downloads" type="library" />
-                }
-              >
-                <Downloads />
-              </Suspense>
+              <OfflineGuard allowOffline>
+                <Suspense
+                  fallback={
+                    <LayoutFallback
+                      activeSection="downloads"
+                      type="library"
+                    />
+                  }
+                >
+                  <Downloads />
+                </Suspense>
+              </OfflineGuard>
             }
           />
           <Route
             path="/downloads/songs"
             element={
-              <Suspense
-                fallback={
-                  <LayoutFallback activeSection="downloads" type="library" />
-                }
-              >
-                <DownloadedSongs />
-              </Suspense>
+              <OfflineGuard allowOffline>
+                <Suspense
+                  fallback={
+                    <LayoutFallback
+                      activeSection="downloads"
+                      type="library"
+                    />
+                  }
+                >
+                  <DownloadedSongs />
+                </Suspense>
+              </OfflineGuard>
             }
           />
           <Route
             path="/album/:albumId"
             element={
-              <Suspense
-                fallback={
-                  <LayoutFallback activeSection="albums" type="albumDetail" />
-                }
+              <OfflineGuard
+                title="Albums are unavailable offline"
+                message="Connect to your Jellyfin server to view album details."
               >
-                <AlbumView />
-              </Suspense>
+                <Suspense
+                  fallback={
+                    <LayoutFallback
+                      activeSection="albums"
+                      type="albumDetail"
+                    />
+                  }
+                >
+                  <AlbumView />
+                </Suspense>
+              </OfflineGuard>
             }
           />
           <Route
             path="/artist/:artistId"
             element={
-              <Suspense
-                fallback={
-                  <LayoutFallback activeSection="artists" type="artist" />
-                }
+              <OfflineGuard
+                title="Artists are unavailable offline"
+                message="Connect to your Jellyfin server to explore artist details."
               >
-                <ArtistView />
-              </Suspense>
+                <Suspense
+                  fallback={
+                    <LayoutFallback
+                      activeSection="artists"
+                      type="artist"
+                    />
+                  }
+                >
+                  <ArtistView />
+                </Suspense>
+              </OfflineGuard>
             }
           />
           <Route
@@ -232,33 +316,48 @@ const AppContent = () => {
           <Route
             path="/playlist/:playlistId"
             element={
-              <Suspense
-                fallback={
-                  <LayoutFallback activeSection="playlists" type="playlist" />
-                }
+              <OfflineGuard
+                title="Playlists are unavailable offline"
+                message="Playlist details require a connection to your Jellyfin server."
               >
-                <PlaylistView />
-              </Suspense>
+                <Suspense
+                  fallback={
+                    <LayoutFallback
+                      activeSection="playlists"
+                      type="playlist"
+                    />
+                  }
+                >
+                  <PlaylistView />
+                </Suspense>
+              </OfflineGuard>
             }
           />
           <Route
             path="/favourites"
             element={
-              <Suspense
-                fallback={
-                  <LayoutFallback activeSection="favourites" type="albums" />
-                }
-              >
-                <Favourites />
-              </Suspense>
+              <OfflineGuard title="Favourites are unavailable offline">
+                <Suspense
+                  fallback={
+                    <LayoutFallback
+                      activeSection="favourites"
+                      type="albums"
+                    />
+                  }
+                >
+                  <Favourites />
+                </Suspense>
+              </OfflineGuard>
             }
           />
           <Route
             path="/settings"
             element={
-              <Suspense fallback={<LoadingFallback />}>
-                <SettingsPage />
-              </Suspense>
+              <OfflineGuard allowOffline showDownloadsButton={false}>
+                <Suspense fallback={<LoadingFallback />}>
+                  <SettingsPage />
+                </Suspense>
+              </OfflineGuard>
             }
           />
           <Route
@@ -283,11 +382,13 @@ const App = () => {
       enableSystem
       disableTransitionOnChange
     >
-      <MusicProvider>
-        <AppContent />
-        {/* Global Toaster for notifications */}
-        <Toaster richColors closeButton />
-      </MusicProvider>
+      <OfflineModeProvider>
+        <MusicProvider>
+          <AppContent />
+          {/* Global Toaster for notifications */}
+          <Toaster richColors closeButton />
+        </MusicProvider>
+      </OfflineModeProvider>
     </ThemeProvider>
   );
 };

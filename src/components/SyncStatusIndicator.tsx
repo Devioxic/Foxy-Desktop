@@ -7,16 +7,10 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
-import {
-  Database,
-  RefreshCw,
-  Wifi,
-  WifiOff,
-  CheckCircle,
-  AlertCircle,
-} from "lucide-react";
+import { RefreshCw, WifiOff, CheckCircle, AlertCircle } from "lucide-react";
 import { syncService, SyncProgress } from "@/lib/sync";
 import { logger } from "@/lib/logger";
+import { useOfflineModeContext } from "@/contexts/OfflineModeContext";
 
 interface SyncStatusIndicatorProps {
   className?: string;
@@ -41,6 +35,8 @@ export default function SyncStatusIndicator({
   const [lastSyncTime, setLastSyncTime] = useState<string>(
     () => localStorage.getItem("syncStatus.last") || "Never"
   );
+  const { isOffline: offlineModeActive, isSimulated } = useOfflineModeContext();
+  const offlineActive = !isOnline || offlineModeActive;
 
   useEffect(() => {
     loadSyncStatus();
@@ -111,7 +107,7 @@ export default function SyncStatusIndicator({
   };
 
   const handleQuickSync = async () => {
-    if (!isOnline || isSyncing) return;
+    if (offlineActive || isSyncing) return;
 
     try {
       setIsSyncing(true);
@@ -139,21 +135,24 @@ export default function SyncStatusIndicator({
   };
 
   const getStatusColor = () => {
-    if (!isOnline) return "text-gray-400";
+  if (offlineActive) return "text-red-500";
     if (isSyncing) return "text-blue-600";
     if (!syncStatus || syncStatus.lastFullSync === 0) return "text-yellow-600";
     return "text-green-600";
   };
 
   const getStatusIcon = () => {
-    if (!isOnline) return WifiOff;
+    if (offlineActive) return WifiOff;
     if (isSyncing) return RefreshCw;
     if (!syncStatus || syncStatus.lastFullSync === 0) return AlertCircle;
     return CheckCircle;
   };
 
   const getTooltipContent = () => {
-    if (!isOnline) return "Offline - Working with cached data";
+    if (offlineActive)
+      return isSimulated
+        ? "Offline mode (simulated)"
+        : "Foxy is offline - Working with downloaded content";
     if (isSyncing) return syncProgress ? syncProgress.message : "Syncing...";
     if (!syncStatus || syncStatus.lastFullSync === 0)
       return "No sync yet - Click to sync library";
@@ -165,6 +164,9 @@ export default function SyncStatusIndicator({
   };
 
   const StatusIcon = getStatusIcon();
+  const iconSizeClass = offlineActive ? "w-5 h-5" : "w-4 h-4";
+
+  const offlineLabel = offlineActive ? "Foxy is offline" : null;
 
   return (
     <TooltipProvider>
@@ -174,16 +176,16 @@ export default function SyncStatusIndicator({
             variant="ghost"
             size="sm"
             onClick={handleQuickSync}
-            disabled={!isOnline || isSyncing}
-            className={`p-2 h-auto rounded-xl ${className}`}
+            disabled={offlineActive || isSyncing}
+            className={`relative group p-2 h-auto rounded-xl disabled:opacity-100 ${className}`}
           >
             <div className="flex items-center space-x-2">
               <StatusIcon
-                className={`w-4 h-4 ${getStatusColor()} ${
+                className={`${iconSizeClass} ${getStatusColor()} ${
                   isSyncing ? "animate-spin" : ""
                 }`}
               />
-              {showText && (
+              {showText && !offlineActive && (
                 <div className="flex flex-col items-start text-xs">
                   <span className="text-gray-700">
                     {syncStatus
@@ -201,7 +203,17 @@ export default function SyncStatusIndicator({
                   </span>
                 </div>
               )}
+              {showText && offlineActive && offlineLabel && (
+                <span className="text-xs font-medium text-red-400">
+                  {offlineLabel}
+                </span>
+              )}
             </div>
+            {offlineLabel && (
+              <span className="pointer-events-none absolute left-1/2 -bottom-8 -translate-x-1/2 whitespace-nowrap rounded-md bg-popover px-2 py-1 text-xs font-medium text-popover-foreground shadow-md opacity-0 transition-opacity group-hover:opacity-100 z-50">
+                {offlineLabel}
+              </span>
+            )}
           </Button>
         </TooltipTrigger>
         <TooltipContent>
@@ -211,7 +223,7 @@ export default function SyncStatusIndicator({
               .map((line, i) => (
                 <div key={i}>{line}</div>
               ))}
-            {isOnline && !isSyncing && (
+            {!offlineActive && !isSyncing && (
               <div className="text-xs text-gray-400 mt-1">
                 Click to sync recent changes
               </div>

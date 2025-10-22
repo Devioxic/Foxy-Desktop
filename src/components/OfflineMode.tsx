@@ -1,5 +1,5 @@
 import React from "react";
-import { WifiOff, Download, Music } from "lucide-react";
+import { WifiOff, Download, Settings } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useNavigate } from "react-router-dom";
 
@@ -11,7 +11,7 @@ interface OfflineModeProps {
 
 const OfflineMode: React.FC<OfflineModeProps> = ({
   title = "Foxy is offline",
-  message = "Check your downloads to access offline music",
+  message = "You can still enjoy your downloaded music while we reconnect. Jump into your offline library or adjust connection settings.",
   showDownloadsButton = true,
 }) => {
   const navigate = useNavigate();
@@ -30,7 +30,7 @@ const OfflineMode: React.FC<OfflineModeProps> = ({
         {showDownloadsButton && (
           <div className="space-y-3">
             <Button
-              onClick={() => navigate("/downloads/songs")}
+              onClick={() => navigate("/downloads")}
               className="w-full"
             >
               <Download className="w-4 h-4 mr-2" />
@@ -38,11 +38,11 @@ const OfflineMode: React.FC<OfflineModeProps> = ({
             </Button>
             <Button
               variant="outline"
-              onClick={() => navigate("/downloads")}
+              onClick={() => navigate("/settings")}
               className="w-full"
             >
-              <Music className="w-4 h-4 mr-2" />
-              Browse Offline Music
+              <Settings className="w-4 h-4 mr-2" />
+              Open Settings
             </Button>
           </div>
         )}
