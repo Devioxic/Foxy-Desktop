@@ -8,6 +8,7 @@ import {
   getAlbumInfo,
   getArtistInfo,
   getPlaylistItems,
+  getPlaylistInfo,
 } from "./jellyfin";
 import { BaseItemDto } from "@jellyfin/sdk/lib/generated-client/models";
 import { logger } from "./logger";
@@ -562,7 +563,8 @@ export class HybridDataService {
     forceOnline: boolean = false,
     onlyWithAlbums: boolean = false
   ): Promise<BaseItemDto[]> {
-    const preferLocal = !forceOnline && (this.useLocalFirst || this.offlineModeActive);
+    const preferLocal =
+      !forceOnline && (this.useLocalFirst || this.offlineModeActive);
     if (preferLocal) {
       try {
         await localDb.initialize();
@@ -611,7 +613,8 @@ export class HybridDataService {
     id: string,
     forceOnline: boolean = false
   ): Promise<BaseItemDto | null> {
-    const preferLocal = !forceOnline && (this.useLocalFirst || this.offlineModeActive);
+    const preferLocal =
+      !forceOnline && (this.useLocalFirst || this.offlineModeActive);
     if (preferLocal) {
       try {
         await localDb.initialize();
@@ -646,7 +649,8 @@ export class HybridDataService {
     offset?: number,
     forceOnline: boolean = false
   ): Promise<BaseItemDto[]> {
-    const preferLocal = !forceOnline && (this.useLocalFirst || this.offlineModeActive);
+    const preferLocal =
+      !forceOnline && (this.useLocalFirst || this.offlineModeActive);
     if (preferLocal) {
       try {
         await localDb.initialize();
@@ -686,7 +690,8 @@ export class HybridDataService {
     forceOnline: boolean = false
   ): Promise<BaseItemDto | null> {
     // Optionally try local first
-    const preferLocal = !forceOnline && (this.useLocalFirst || this.offlineModeActive);
+    const preferLocal =
+      !forceOnline && (this.useLocalFirst || this.offlineModeActive);
     if (preferLocal) {
       try {
         await localDb.initialize();
@@ -734,12 +739,14 @@ export class HybridDataService {
     forceOnline: boolean = false
   ): Promise<BaseItemDto[]> {
     // Optionally try local first
-    const preferLocal = !forceOnline && (this.useLocalFirst || this.offlineModeActive);
+    const preferLocal =
+      !forceOnline && (this.useLocalFirst || this.offlineModeActive);
     if (preferLocal) {
       try {
         await localDb.initialize();
         const localTracks = await localDb.getTracksByAlbumId(albumId);
-        if (localTracks.length > 0 || this.offlineModeActive) return localTracks;
+        if (localTracks.length > 0 || this.offlineModeActive)
+          return localTracks;
       } catch (error) {
         logger.warn("Local album tracks lookup failed", error);
       }
@@ -782,7 +789,8 @@ export class HybridDataService {
     artistId: string,
     forceOnline: boolean = false
   ): Promise<BaseItemDto[]> {
-    const preferLocal = !forceOnline && (this.useLocalFirst || this.offlineModeActive);
+    const preferLocal =
+      !forceOnline && (this.useLocalFirst || this.offlineModeActive);
     if (preferLocal) {
       try {
         await localDb.initialize();
@@ -817,7 +825,8 @@ export class HybridDataService {
     artistId: string,
     forceOnline: boolean = false
   ): Promise<BaseItemDto[]> {
-    const preferLocal = !forceOnline && (this.useLocalFirst || this.offlineModeActive);
+    const preferLocal =
+      !forceOnline && (this.useLocalFirst || this.offlineModeActive);
     if (preferLocal) {
       try {
         await localDb.initialize();
@@ -843,7 +852,8 @@ export class HybridDataService {
   }
 
   async getPlaylists(forceOnline: boolean = false): Promise<BaseItemDto[]> {
-    const preferLocal = !forceOnline && (this.useLocalFirst || this.offlineModeActive);
+    const preferLocal =
+      !forceOnline && (this.useLocalFirst || this.offlineModeActive);
     if (preferLocal) {
       try {
         await localDb.initialize();
@@ -871,11 +881,93 @@ export class HybridDataService {
     return await getAllPlaylists();
   }
 
+  async getPlaylistById(
+    id: string,
+    forceOnline: boolean = false
+  ): Promise<BaseItemDto | null> {
+    const preferLocal =
+      !forceOnline && (this.useLocalFirst || this.offlineModeActive);
+    if (preferLocal) {
+      try {
+        await localDb.initialize();
+        const localPlaylist = await localDb.getPlaylistById(id);
+        if (localPlaylist) {
+          return localPlaylist;
+        }
+      } catch (error) {
+        logger.warn(
+          "Failed to get playlist from local database, falling back to server:",
+          error
+        );
+      }
+    }
+
+    if (this.offlineModeActive) {
+      return null;
+    }
+
+    try {
+      return await getPlaylistInfo(id);
+    } catch (error) {
+      logger.warn("Failed to fetch playlist from server:", error);
+    }
+
+    try {
+      await localDb.initialize();
+      return await localDb.getPlaylistById(id);
+    } catch (error) {
+      logger.warn("Final local playlist lookup failed", error);
+      return null;
+    }
+  }
+
+  async getPlaylistTracks(
+    playlistId: string,
+    forceOnline: boolean = false
+  ): Promise<BaseItemDto[]> {
+    const preferLocal =
+      !forceOnline && (this.useLocalFirst || this.offlineModeActive);
+    if (preferLocal) {
+      try {
+        await localDb.initialize();
+        const localTracks = await localDb.getPlaylistTracks(playlistId);
+        if (localTracks.length > 0 || this.offlineModeActive) {
+          return localTracks;
+        }
+      } catch (error) {
+        logger.warn(
+          "Failed to get playlist tracks from local database, falling back to server:",
+          error
+        );
+      }
+    }
+
+    if (this.offlineModeActive) {
+      return [];
+    }
+
+    try {
+      const tracks = await getPlaylistItems(playlistId);
+      return tracks || [];
+    } catch (error) {
+      logger.warn("Failed to fetch playlist tracks from server:", error);
+    }
+
+    try {
+      await localDb.initialize();
+      return await localDb.getPlaylistTracks(playlistId);
+    } catch (error) {
+      logger.warn("Final local playlist tracks lookup failed", error);
+      return [];
+    }
+  }
+
   async searchArtists(
     query: string,
     forceOnline: boolean = false
   ): Promise<BaseItemDto[]> {
-    const preferLocal = !forceOnline && (this.useLocalFirst || this.offlineModeActive);
+    const preferLocal =
+      !forceOnline && (this.useLocalFirst || this.offlineModeActive);
     if (preferLocal) {
       try {
         await localDb.initialize();

@@ -148,9 +148,7 @@ const AppContent = () => {
             element={
               <OfflineGuard title="Home is unavailable offline">
                 <Suspense
-                  fallback={
-                    <LayoutFallback activeSection="home" type="home" />
-                  }
+                  fallback={<LayoutFallback activeSection="home" type="home" />}
                 >
                   <Home />
                 </Suspense>
@@ -219,7 +217,10 @@ const AppContent = () => {
               <OfflineGuard title="Playlists are unavailable offline">
                 <Suspense
                   fallback={
-                    <LayoutFallback activeSection="playlists" type="playlists" />
+                    <LayoutFallback
+                      activeSection="playlists"
+                      type="playlists"
+                    />
                   }
                 >
                   <Playlists />
@@ -233,10 +234,7 @@ const AppContent = () => {
               <OfflineGuard allowOffline>
                 <Suspense
                   fallback={
-                    <LayoutFallback
-                      activeSection="downloads"
-                      type="library"
-                    />
+                    <LayoutFallback activeSection="downloads" type="library" />
                   }
                 >
                   <Downloads />
@@ -250,10 +248,7 @@ const AppContent = () => {
               <OfflineGuard allowOffline>
                 <Suspense
                   fallback={
-                    <LayoutFallback
-                      activeSection="downloads"
-                      type="library"
-                    />
+                    <LayoutFallback activeSection="downloads" type="library" />
                   }
                 >
                   <DownloadedSongs />
@@ -265,15 +260,13 @@ const AppContent = () => {
             path="/album/:albumId"
             element={
               <OfflineGuard
+                allowOffline
                 title="Albums are unavailable offline"
                 message="Connect to your Jellyfin server to view album details."
               >
                 <Suspense
                   fallback={
-                    <LayoutFallback
-                      activeSection="albums"
-                      type="albumDetail"
-                    />
+                    <LayoutFallback activeSection="albums" type="albumDetail" />
                   }
                 >
                   <AlbumView />
@@ -290,10 +283,7 @@ const AppContent = () => {
               >
                 <Suspense
                   fallback={
-                    <LayoutFallback
-                      activeSection="artists"
-                      type="artist"
-                    />
+                    <LayoutFallback activeSection="artists" type="artist" />
                   }
                 >
                   <ArtistView />
@@ -317,15 +307,13 @@ const AppContent = () => {
             path="/playlist/:playlistId"
             element={
               <OfflineGuard
+                allowOffline
                 title="Playlists are unavailable offline"
                 message="Playlist details require a connection to your Jellyfin server."
               >
                 <Suspense
                   fallback={
-                    <LayoutFallback
-                      activeSection="playlists"
-                      type="playlist"
-                    />
+                    <LayoutFallback activeSection="playlists" type="playlist" />
                   }
                 >
                   <PlaylistView />
@@ -339,10 +327,7 @@ const AppContent = () => {
               <OfflineGuard title="Favourites are unavailable offline">
                 <Suspense
                   fallback={
-                    <LayoutFallback
-                      activeSection="favourites"
-                      type="albums"
-                    />
+                    <LayoutFallback activeSection="favourites" type="albums" />
                   }
                 >
                   <Favourites />

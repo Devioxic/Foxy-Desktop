@@ -1,12 +1,9 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback, useRef } from "react";
 import { APP_EVENTS, FavoriteStateChangedDetail } from "@/constants/events";
 import { useParams, useNavigate, useSearchParams } from "react-router-dom";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent } from "@/components/ui/card";
-import { Skeleton } from "@/components/ui/skeleton";
 import LoadingSkeleton from "@/components/LoadingSkeleton";
 import { logger } from "@/lib/logger";
-import AddToPlaylistDialog from "@/components/AddToPlaylistDialog";
 import MusicPlayer from "@/components/MusicPlayer";
 import Sidebar from "@/components/Sidebar";
 import TrackList from "@/components/TrackList";
@@ -16,16 +13,13 @@ import BackButton from "@/components/BackButton";
 import { formatDuration } from "@/utils/media";
 import {
   Play,
-  Pause,
   Star,
-  ArrowLeft,
   Music,
   Shuffle,
   Plus,
   Loader2,
   ListPlus,
   ListMusic,
-  X,
   Download,
   MoreVertical,
   SkipForward,
@@ -44,8 +38,6 @@ import {
   showError,
 } from "@/utils/toast";
 import {
-  getPlaylistItems,
-  getPlaylistInfo,
   findArtistByName,
   getCurrentUser,
   getServerInfo,
@@ -57,6 +49,8 @@ import {
 import { BaseItemDto } from "@jellyfin/sdk/lib/generated-client/models";
 import { useAuthData } from "@/hooks/useAuthData";
 import { Dropdown } from "@/components/Dropdown";
+import { hybridData } from "@/lib/sync";
+import { useOfflineModeContext } from "@/contexts/OfflineModeContext";
 import {
   Dialog,
   DialogTrigger,
@@ -85,16 +79,9 @@ interface PlaylistInfo extends BaseItemDto {
 const PlaylistView = () => {
   const { playlistId } = useParams<{ playlistId: string }>();
   const navigate = useNavigate();
-  const { authData, isAuthenticated } = useAuthData();
-  const {
-    currentTrack,
-    isPlaying,
-    playNow,
-    addToQueue,
-    playQueue,
-    queue,
-    addToQueueNext,
-  } = useMusicPlayer();
+  const { authData } = useAuthData();
+  const { currentTrack, isPlaying, addToQueue, playQueue, addToQueueNext } =
+    useMusicPlayer();
   const [searchParams] = useSearchParams();
 
   const [playlistInfo, setPlaylistInfo] = useState<PlaylistInfo | null>(null);
@@ -114,137 +101,160 @@ const PlaylistView = () => {
   const [downloading, setDownloading] = useState(false);
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
+  const spinnerPlaylistRef = useRef<string | null>(null);
 
   const handleLyricsToggle = (show: boolean) => {
     setShowLyrics(show);
   };
 
-  useEffect(() => {
-    if (playlistId) {
-      loadPlaylistData();
-    }
-  }, [playlistId]);
+  const { isOffline } = useOfflineModeContext();
 
-  useEffect(() => {
-    const trackIds = new Set(
-      (tracks || []).map((track) => track.Id).filter(Boolean) as string[]
-    );
-    const handler = (event: Event) => {
-      const { detail } = event as CustomEvent<FavoriteStateChangedDetail>;
-      if (!detail?.trackId || !trackIds.has(detail.trackId)) return;
-      setTrackFavorites((prev) => {
-        if (prev[detail.trackId] === detail.isFavorite) {
-          return prev;
-        }
-        return { ...prev, [detail.trackId]: detail.isFavorite };
-      });
-    };
-    window.addEventListener(
-      APP_EVENTS.favoriteStateChanged,
-      handler as EventListener
-    );
-    return () => {
-      window.removeEventListener(
-        APP_EVENTS.favoriteStateChanged,
-        handler as EventListener
-      );
-    };
-  }, [tracks]);
-
-  useEffect(() => {
-    if (currentTrack) {
-      setPlayingTrackId(isPlaying ? currentTrack.Id || null : null);
-    } else {
-      setPlayingTrackId(null);
-    }
-  }, [currentTrack, isPlaying]);
-
-  const loadPlaylistData = async () => {
-    setLoading(true);
-    try {
-      if (!isAuthenticated()) {
-        navigate("/login");
-        return;
+  const loadPlaylistData = useCallback(
+    async (options: { showSpinner?: boolean } = {}) => {
+      const { showSpinner = false } = options;
+      if (showSpinner) {
+        setLoading(true);
       }
+      try {
+        const hasAuth = Boolean(authData.accessToken && authData.serverAddress);
+        if (!playlistId) {
+          return;
+        }
 
-      const [info, items] = await Promise.all([
-        getPlaylistInfo(playlistId!),
-        getPlaylistItems(playlistId!),
-      ]);
+        if (!hasAuth && !isOffline) {
+          navigate("/login");
+          return;
+        }
 
-      const playlistItems = (items as Track[]) || [];
-      const runtimeTicks = playlistItems.reduce(
-        (acc, track) => acc + (track.RunTimeTicks || 0),
-        0
-      );
-      setTracks(playlistItems);
-      setPlaylistInfo(
-        info
+        const [info, items] = await Promise.all([
+          hybridData.getPlaylistById(playlistId),
+          hybridData.getPlaylistTracks(playlistId),
+        ]);
+
+        const playlistItems: Track[] = Array.isArray(items)
+          ? (items as Track[])
+          : [];
+
+        const runtimeTicks = playlistItems.reduce(
+          (acc: number, track: Track) => acc + (track.RunTimeTicks || 0),
+          0
+        );
+
+        const normalizedInfo: PlaylistInfo | null = info
           ? {
-              ...info,
+              ...(info as PlaylistInfo),
               ChildCount: playlistItems.length,
               CumulativeRunTimeTicks:
-                runtimeTicks > 0 ? runtimeTicks : info.CumulativeRunTimeTicks,
+                runtimeTicks > 0
+                  ? runtimeTicks
+                  : info.CumulativeRunTimeTicks || 0,
             }
-          : info
-      );
-      if (playlistId) {
-        try {
-          const dl = await isCollectionDownloaded(playlistId);
-          setIsDownloaded(dl);
-        } catch {}
-      }
+          : null;
 
-      // Check if playlist is favorited
-      try {
-        const favoriteStatus = await checkIsFavorite(
-          authData.serverAddress,
-          authData.accessToken,
-          playlistId!
-        );
-        setIsFavorite(favoriteStatus);
+        setTracks(playlistItems);
+        setPlaylistInfo(normalizedInfo);
+
+        if (playlistId) {
+          try {
+            const downloaded = await isCollectionDownloaded(playlistId);
+            setIsDownloaded(downloaded);
+          } catch (downloadError) {
+            logger.warn("Failed to check downloaded state", downloadError);
+          }
+        }
+
+        if (!isOffline && hasAuth) {
+          try {
+            const favoriteStatus = await checkIsFavorite(
+              authData.serverAddress,
+              authData.accessToken,
+              playlistId
+            );
+            setIsFavorite(favoriteStatus);
+          } catch (error) {
+            logger.error("Error checking favorite status:", error);
+          }
+
+          if (playlistItems.length > 0) {
+            const trackFavoritePromises = playlistItems.map(
+              async (track: Track) => {
+                if (!track.Id) {
+                  return null;
+                }
+                try {
+                  const isFavoriteTrack = await checkIsFavorite(
+                    authData.serverAddress,
+                    authData.accessToken,
+                    track.Id
+                  );
+                  return { id: track.Id, isFavorite: isFavoriteTrack };
+                } catch (error) {
+                  logger.error(
+                    `Failed to check favorite status for track ${track.Id}:`,
+                    error
+                  );
+                  return { id: track.Id, isFavorite: false };
+                }
+              }
+            );
+
+            const trackFavoriteResults = await Promise.all(
+              trackFavoritePromises
+            );
+            const trackFavoriteMap: Record<string, boolean> = {};
+
+            trackFavoriteResults.forEach(
+              (result: { id: string; isFavorite: boolean } | null) => {
+                if (result) {
+                  trackFavoriteMap[result.id] = result.isFavorite;
+                }
+              }
+            );
+            setTrackFavorites(trackFavoriteMap);
+          } else {
+            setTrackFavorites({});
+          }
+        } else {
+          setIsFavorite(false);
+          setTrackFavorites({});
+        }
       } catch (error) {
-        logger.error("Error checking favorite status:", error);
+        logger.error("Failed to load playlist data", error);
+        if (isOffline) {
+          setPlaylistInfo(null);
+          setTracks([]);
+        }
+      } finally {
+        setLoading(false);
       }
+    },
+    [
+      playlistId,
+      isOffline,
+      navigate,
+      authData.accessToken,
+      authData.serverAddress,
+    ]
+  );
 
-      // Check favorite status for all tracks
-      if (items && items.length > 0) {
-        const trackFavoritePromises = items.map(async (track) => {
-          if (track.Id) {
-            try {
-              const isFavorite = await checkIsFavorite(
-                authData.serverAddress,
-                authData.accessToken,
-                track.Id
-              );
-              return { id: track.Id, isFavorite };
-            } catch (error) {
-              logger.error(
-                `Failed to check favorite status for track ${track.Id}:`,
-                error
-              );
-              return { id: track.Id, isFavorite: false };
-            }
-          }
-          return null;
-        });
+  useEffect(() => {
+    if (!playlistId) return;
 
-        const trackFavoriteResults = await Promise.all(trackFavoritePromises);
-        const trackFavoriteMap: Record<string, boolean> = {};
-
-        trackFavoriteResults.forEach((result) => {
-          if (result) {
-            trackFavoriteMap[result.id] = result.isFavorite;
-          }
-        });
-        setTrackFavorites(trackFavoriteMap);
-      }
-    } catch (error) {
-      logger.error("Failed to load playlist data", error);
-    } finally {
-      setLoading(false);
+    const shouldShowSpinner = spinnerPlaylistRef.current !== playlistId;
+    loadPlaylistData({ showSpinner: shouldShowSpinner });
+    if (shouldShowSpinner) {
+      spinnerPlaylistRef.current = playlistId;
     }
-  };
+
+    const handleDownloadsUpdate = () => {
+      loadPlaylistData();
+    };
+
+    window.addEventListener("downloadsUpdate", handleDownloadsUpdate);
+    return () => {
+      window.removeEventListener("downloadsUpdate", handleDownloadsUpdate);
+    };
+  }, [playlistId, loadPlaylistData]);
 
   const handleToggleDownload = async () => {
     if (!playlistId) return;
@@ -459,7 +469,7 @@ const PlaylistView = () => {
       window.removeEventListener("playlistItemRemoved", handleRefresh as any);
       window.removeEventListener("playlistItemsUpdated", handleRefresh as any);
     };
-  }, [playlistId]);
+  }, [playlistId, loadPlaylistData]);
 
   if (loading) {
     return (
@@ -477,6 +487,9 @@ const PlaylistView = () => {
   }
 
   if (!playlistInfo) {
+    const description = isOffline
+      ? "This playlist hasn't been downloaded yet. Head to Downloads to sync it for offline listening."
+      : "The playlist you're looking for doesn't exist or has been removed.";
     return (
       <div className="min-h-screen bg-background">
         <Sidebar activeSection="playlists" />
@@ -487,13 +500,18 @@ const PlaylistView = () => {
               <h2 className="text-xl font-semibold text-foreground mb-2">
                 Playlist not found
               </h2>
-              <p className="text-muted-foreground">
-                The playlist you're looking for doesn't exist or has been
-                removed.
-              </p>
-              <Button onClick={() => navigate(-1)} className="mt-4">
-                Go Back
-              </Button>
+              <p className="text-muted-foreground">{description}</p>
+              <div className="flex justify-center gap-3 mt-4">
+                <Button onClick={() => navigate(-1)}>Go Back</Button>
+                {isOffline && (
+                  <Button
+                    variant="outline"
+                    onClick={() => navigate("/downloads")}
+                  >
+                    View Downloads
+                  </Button>
+                )}
+              </div>
             </div>
           </div>
         </div>

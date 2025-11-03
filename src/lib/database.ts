@@ -875,6 +875,23 @@ class LocalDatabase {
     return results.length > 0 ? this.rowToPlaylist(results[0]) : null;
   }
 
+  async getPlaylistTracks(playlistId: string): Promise<BaseItemDto[]> {
+    if (!playlistId) return [];
+    const rows = this.exec(
+      `SELECT t.*, pi.sort_index FROM playlist_items pi
+       JOIN tracks t ON t.id = pi.track_id
+       WHERE pi.playlist_id = ?
+       ORDER BY pi.sort_index ASC, t.name COLLATE NOCASE`,
+      [playlistId]
+    );
+    return rows.map((row) => {
+      const track = this.rowToTrack(row);
+      (track as any).SortIndex =
+        typeof row.sort_index === "number" ? row.sort_index : null;
+      return track;
+    });
+  }
+
   async updatePlaylistStats(
     playlistId: string,
     childCount: number,

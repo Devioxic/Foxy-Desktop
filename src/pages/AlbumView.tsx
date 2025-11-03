@@ -34,6 +34,7 @@ import TrackList from "@/components/TrackList";
 import { useMusicPlayer } from "@/contexts/MusicContext";
 import { formatDuration, getImageUrl } from "@/utils/media";
 import { perf } from "@/utils/performance";
+import { useOfflineModeContext } from "@/contexts/OfflineModeContext";
 // lucide icons imported above
 import {
   isCollectionDownloaded,
@@ -90,6 +91,7 @@ const AlbumView = () => {
   const { albumId } = useParams<{ albumId: string }>();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
+  const { isOffline } = useOfflineModeContext();
 
   const handleArtistClick = async (artistName: string) => {
     try {
@@ -321,53 +323,60 @@ const AlbumView = () => {
         } catch {}
       }
 
-      // Check favorite status for album
-      if (albumDetails.Id) {
-        const albumFavoriteStatus = await checkIsFavorite(
-          authData.serverAddress,
-          authData.accessToken,
-          albumDetails.Id
-        );
-        setIsAlbumFavorite(albumFavoriteStatus);
-      }
+      if (!isOffline && authData.serverAddress && authData.accessToken) {
+        // Check favorite status for album
+        if (albumDetails.Id) {
+          const albumFavoriteStatus = await checkIsFavorite(
+            authData.serverAddress,
+            authData.accessToken,
+            albumDetails.Id
+          );
+          setIsAlbumFavorite(albumFavoriteStatus);
+        }
 
-      // Check favorite status for all tracks
-      if (Array.isArray(albumTracks) && albumTracks.length > 0) {
-        const trackFavoritePromises = (albumTracks as any[]).map(
-          async (track: any) => {
-            if (track.Id) {
-              try {
-                const isFavorite = await checkIsFavorite(
-                  authData.serverAddress,
-                  authData.accessToken,
-                  track.Id
-                );
-                return { id: track.Id, isFavorite };
-              } catch (error) {
-                logger.error(
-                  `Failed to check favorite status for track ${track.Id}:`,
-                  error
-                );
-                return { id: track.Id, isFavorite: false };
+        // Check favorite status for all tracks
+        if (Array.isArray(albumTracks) && albumTracks.length > 0) {
+          const trackFavoritePromises = (albumTracks as any[]).map(
+            async (track: any) => {
+              if (track.Id) {
+                try {
+                  const isFavorite = await checkIsFavorite(
+                    authData.serverAddress,
+                    authData.accessToken,
+                    track.Id
+                  );
+                  return { id: track.Id, isFavorite };
+                } catch (error) {
+                  logger.error(
+                    `Failed to check favorite status for track ${track.Id}:`,
+                    error
+                  );
+                  return { id: track.Id, isFavorite: false };
+                }
               }
+              return null;
             }
-            return null;
-          }
-        );
+          );
 
-        const trackFavoriteResults: Array<{
-          id: string;
-          isFavorite: boolean;
-        } | null> = await Promise.all(trackFavoritePromises);
-        const trackFavoriteMap: Record<string, boolean> = {};
+          const trackFavoriteResults: Array<{
+            id: string;
+            isFavorite: boolean;
+          } | null> = await Promise.all(trackFavoritePromises);
+          const trackFavoriteMap: Record<string, boolean> = {};
 
-        trackFavoriteResults.forEach((result) => {
-          if (result) {
-            trackFavoriteMap[result.id] = result.isFavorite;
-          }
-        });
+          trackFavoriteResults.forEach((result) => {
+            if (result) {
+              trackFavoriteMap[result.id] = result.isFavorite;
+            }
+          });
 
-        setTrackFavorites(trackFavoriteMap);
+          setTrackFavorites(trackFavoriteMap);
+        } else {
+          setTrackFavorites({});
+        }
+      } else {
+        setIsAlbumFavorite(false);
+        setTrackFavorites({});
       }
     } catch (error) {
       logger.error("Failed to load album data", error);
@@ -479,6 +488,9 @@ const AlbumView = () => {
   }
 
   if (!albumInfo) {
+    const description = isOffline
+      ? "This album isn't available offline yet. Download it from your library before disconnecting."
+      : "The album you're looking for doesn't exist.";
     return (
       <div className="min-h-screen bg-background">
         <Sidebar
@@ -491,10 +503,18 @@ const AlbumView = () => {
             <h2 className="text-xl font-semibold text-foreground mb-2">
               Album not found
             </h2>
-            <p className="text-muted-foreground mb-4">
-              The album you're looking for doesn't exist.
-            </p>
-            <Button onClick={() => navigate(-1)}>Go Back</Button>
+            <p className="text-muted-foreground mb-4">{description}</p>
+            <div className="flex justify-center gap-3">
+              <Button onClick={() => navigate(-1)}>Go Back</Button>
+              {isOffline && (
+                <Button
+                  variant="outline"
+                  onClick={() => navigate("/downloads")}
+                >
+                  View Downloads
+                </Button>
+              )}
+            </div>
           </div>
         </div>
       </div>
