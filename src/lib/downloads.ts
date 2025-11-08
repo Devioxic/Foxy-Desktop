@@ -2,6 +2,176 @@ import { localDb } from "./database";
 import { logger } from "./logger";
 import type { BaseItemDto } from "@jellyfin/sdk/lib/generated-client/models";
 
+export type DownloadQuality = "original" | "high" | "medium" | "low";
+
+const DOWNLOAD_QUALITY_KEY = "download_quality";
+
+const QUALITY_BITRATE_LIMIT: Record<DownloadQuality, number | null> = {
+  original: null,
+  high: 320_000,
+  medium: 256_000,
+  low: 128_000,
+};
+
+interface AuthData {
+  serverAddress?: string;
+  accessToken?: string;
+  userId?: string;
+}
+
+interface PartialMediaSource {
+  Container?: string | null;
+  Bitrate?: number | null;
+  DirectStreamUrl?: string | null;
+  TranscodingUrl?: string | null;
+  Path?: string | null;
+}
+
+interface ResolveDownloadRequestOptions {
+  mediaSource?: PartialMediaSource | null;
+  fallbackUrl?: string | null;
+  qualityOverride?: DownloadQuality;
+  serverAddress?: string | null;
+  accessToken?: string | null;
+  userId?: string | null;
+  deviceId?: string | null;
+}
+
+interface DownloadRequest {
+  url: string | null;
+  container: string | null;
+  bitrate: number | null;
+  quality: DownloadQuality;
+  isTranscode: boolean;
+}
+
+const readAuthData = (): AuthData => {
+  if (typeof window === "undefined") return {};
+  try {
+    return JSON.parse(localStorage.getItem("authData") || "{}") as AuthData;
+  } catch {
+    return {};
+  }
+};
+
+const readDeviceId = (): string => {
+  if (typeof window === "undefined") return "";
+  try {
+    return localStorage.getItem("foxyDeviceId") || "";
+  } catch {
+    return "";
+  }
+};
+
+export const getDownloadQualityPreference = (): DownloadQuality => {
+  if (typeof window === "undefined") return "original";
+  try {
+    const stored = localStorage.getItem(DOWNLOAD_QUALITY_KEY);
+    if (
+      stored === "original" ||
+      stored === "high" ||
+      stored === "medium" ||
+      stored === "low"
+    ) {
+      return stored;
+    }
+  } catch {}
+  return "original";
+};
+
+export const setDownloadQualityPreference = (quality: DownloadQuality) => {
+  if (typeof window === "undefined") return;
+  try {
+    localStorage.setItem(DOWNLOAD_QUALITY_KEY, quality);
+  } catch {}
+};
+
+export const resolveDownloadRequest = (
+  trackId: string,
+  options: ResolveDownloadRequestOptions = {}
+): DownloadRequest => {
+  const auth = readAuthData();
+  const serverAddress = options.serverAddress ?? auth.serverAddress ?? null;
+  const accessToken = options.accessToken ?? auth.accessToken ?? null;
+  const userId = options.userId ?? auth.userId ?? null;
+  const deviceId = options.deviceId ?? readDeviceId();
+  const quality = options.qualityOverride ?? getDownloadQualityPreference();
+  const mediaSource = options.mediaSource ?? null;
+
+  const normalizeUrl = (input: string | null | undefined): string | null => {
+    if (!input) return null;
+    let url = input;
+    if (serverAddress && url.startsWith("/")) {
+      url = `${serverAddress}${url}`;
+    }
+    if (accessToken && !url.includes("api_key=")) {
+      url += url.includes("?")
+        ? `&api_key=${accessToken}`
+        : `?api_key=${accessToken}`;
+    }
+    if (!/[?&]static=/i.test(url)) {
+      url += url.includes("?") ? "&static=true" : "?static=true";
+    }
+    return url;
+  };
+
+  const defaultContainer = mediaSource?.Container ?? null;
+  const defaultBitrate =
+    mediaSource?.Bitrate ?? QUALITY_BITRATE_LIMIT[quality] ?? null;
+
+  if (!serverAddress || !accessToken) {
+    const fallback =
+      options.fallbackUrl ??
+      mediaSource?.DirectStreamUrl ??
+      mediaSource?.TranscodingUrl ??
+      null;
+    return {
+      url: fallback,
+      container: defaultContainer,
+      bitrate: defaultBitrate,
+      quality,
+      isTranscode: quality !== "original",
+    };
+  }
+
+  if (quality === "original") {
+    const directUrl =
+      normalizeUrl(
+        mediaSource?.DirectStreamUrl ?? options.fallbackUrl ?? null
+      ) ??
+      `${serverAddress}/Audio/${trackId}/stream?static=true&api_key=${accessToken}`;
+
+    return {
+      url: directUrl,
+      container: defaultContainer,
+      bitrate: mediaSource?.Bitrate ?? null,
+      quality,
+      isTranscode: false,
+    };
+  }
+
+  const limit = QUALITY_BITRATE_LIMIT[quality];
+  const params = [
+    `api_key=${accessToken}`,
+    userId ? `UserId=${encodeURIComponent(userId)}` : "",
+    deviceId ? `DeviceId=${encodeURIComponent(deviceId)}` : "",
+    limit ? `MaxStreamingBitrate=${limit}` : "",
+    "Container=mp3",
+    "AudioCodec=mp3",
+    "TranscodingContainer=mp3",
+    "TranscodingProtocol=Http",
+    "Static=true",
+  ].filter(Boolean);
+
+  return {
+    url: `${serverAddress}/Audio/${trackId}/universal?${params.join("&")}`,
+    container: "mp3",
+    bitrate: limit ?? null,
+    quality,
+    isTranscode: true,
+  };
+};
+
 // Contract:
 // - downloadTrack: fetches audio for a trackId using provided URL, saves to userData/media, records in DB.
 // - getLocalUrlForTrack: returns media:/// URL if downloaded, else null.
@@ -364,14 +534,22 @@ export async function downloadAlbumById(
   }
   for (const t of items) {
     try {
-      const url = `${auth.serverAddress}/Audio/${t.Id}/stream?static=true&api_key=${auth.accessToken}`;
       const ms = (t as any).MediaSources?.[0];
+      const request = resolveDownloadRequest(t.Id, {
+        mediaSource: (ms as PartialMediaSource) ?? null,
+        serverAddress: auth.serverAddress,
+        accessToken: auth.accessToken,
+        userId: auth.userId,
+      });
+      if (!request.url) {
+        throw new Error("Unable to resolve download URL");
+      }
       await downloadTrack({
         trackId: t.Id,
         name: t.Name,
-        url,
-        container: ms?.Container,
-        bitrate: ms?.Bitrate,
+        url: request.url,
+        container: request.container ?? ms?.Container ?? undefined,
+        bitrate: request.bitrate ?? ms?.Bitrate ?? undefined,
         track: t as any,
         skipMetadata: true,
         suppressEvent: true,
@@ -440,14 +618,22 @@ export async function downloadPlaylistById(
   }
   for (const t of items as any[]) {
     try {
-      const url = `${auth.serverAddress}/Audio/${t.Id}/stream?static=true&api_key=${auth.accessToken}`;
       const ms = (t as any).MediaSources?.[0];
+      const request = resolveDownloadRequest(t.Id, {
+        mediaSource: (ms as PartialMediaSource) ?? null,
+        serverAddress: auth.serverAddress,
+        accessToken: auth.accessToken,
+        userId: auth.userId,
+      });
+      if (!request.url) {
+        throw new Error("Unable to resolve download URL");
+      }
       await downloadTrack({
         trackId: t.Id,
         name: t.Name,
-        url,
-        container: ms?.Container,
-        bitrate: ms?.Bitrate,
+        url: request.url,
+        container: request.container ?? ms?.Container ?? undefined,
+        bitrate: request.bitrate ?? ms?.Bitrate ?? undefined,
         track: t as any,
         skipMetadata: true,
         suppressEvent: true,
@@ -554,14 +740,22 @@ export async function downloadFavourites(
   }
   for (const t of items as any[]) {
     try {
-      const url = `${auth.serverAddress}/Audio/${t.Id}/stream?static=true&api_key=${auth.accessToken}`;
       const ms = (t as any).MediaSources?.[0];
+      const request = resolveDownloadRequest(t.Id, {
+        mediaSource: (ms as PartialMediaSource) ?? null,
+        serverAddress: auth.serverAddress,
+        accessToken: auth.accessToken,
+        userId: auth.userId,
+      });
+      if (!request.url) {
+        throw new Error("Unable to resolve download URL");
+      }
       await downloadTrack({
         trackId: t.Id,
         name: t.Name,
-        url,
-        container: ms?.Container,
-        bitrate: ms?.Bitrate,
+        url: request.url,
+        container: request.container ?? ms?.Container ?? undefined,
+        bitrate: request.bitrate ?? ms?.Bitrate ?? undefined,
         track: t as any,
         skipMetadata: true,
         suppressEvent: true,

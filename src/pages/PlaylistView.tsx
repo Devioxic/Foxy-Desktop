@@ -469,6 +469,19 @@ const PlaylistView = () => {
     };
   }, [playlistId, loadPlaylistData]);
 
+  const imageUrl = playlistInfo
+    ? resolvePrimaryImageUrl({
+        item: playlistInfo as any,
+        serverAddress: authData.serverAddress,
+        accessToken: authData.accessToken || undefined,
+        size: 300,
+      })
+    : null;
+
+  useEffect(() => {
+    setImageError(false);
+  }, [imageUrl]);
+
   if (loading) {
     return (
       <div className="min-h-screen bg-background">
@@ -520,17 +533,6 @@ const PlaylistView = () => {
       </div>
     );
   }
-
-  const imageUrl = resolvePrimaryImageUrl({
-    item: playlistInfo as any,
-    serverAddress: authData.serverAddress,
-    accessToken: authData.accessToken || undefined,
-    size: 300,
-  });
-
-  useEffect(() => {
-    setImageError(false);
-  }, [imageUrl]);
 
   const showPlaceholder = !imageUrl || imageError;
 

@@ -947,6 +947,24 @@ class LocalDatabase {
     return results.map((r) => String(r.id));
   }
 
+  async getDownloadedTrackCountsByAlbum(): Promise<
+    Array<{ albumId: string; downloaded: number }>
+  > {
+    const rows = this.exec(
+      `SELECT t.album_id as albumId, COUNT(*) as downloaded
+       FROM downloads d
+       INNER JOIN tracks t ON t.id = d.track_id
+       WHERE t.album_id IS NOT NULL
+       GROUP BY t.album_id`
+    );
+    return rows
+      .filter((row) => row.albumId)
+      .map((row) => ({
+        albumId: String(row.albumId),
+        downloaded: Number(row.downloaded ?? 0),
+      }));
+  }
+
   private getTableForEntity(
     type: "album" | "artist" | "track" | "playlist"
   ): string {

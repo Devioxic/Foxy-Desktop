@@ -18,6 +18,7 @@ import {
   downloadTrack,
   removeDownload,
   getLocalUrlForTrack,
+  resolveDownloadRequest,
 } from "@/lib/downloads";
 import { useNavigate } from "react-router-dom";
 
@@ -398,34 +399,23 @@ const TrackList: React.FC<TrackListProps> = React.memo(
                                 }));
                               } else {
                                 const ms = (track as any).MediaSources?.[0];
-                                let url: string | undefined =
-                                  ms?.DirectStreamUrl || ms?.TranscodingUrl;
-                                try {
-                                  const auth = JSON.parse(
-                                    localStorage.getItem("authData") || "{}"
-                                  );
-                                  const server = auth?.serverAddress;
-                                  const token = auth?.accessToken;
-                                  if (!url) {
-                                    if (server && token) {
-                                      url = `${server}/Audio/${track.Id}/stream?static=true&api_key=${token}`;
-                                    }
-                                  } else if (
-                                    url &&
-                                    server &&
-                                    token &&
-                                    url.startsWith("/")
-                                  ) {
-                                    url = `${server}${url}${url.includes("?") ? `&api_key=${token}` : `?api_key=${token}`}`;
+                                const request = resolveDownloadRequest(
+                                  track.Id!,
+                                  {
+                                    mediaSource: ms,
                                   }
-                                } catch {}
-                                if (!url) return;
+                                );
+                                if (!request.url) return;
                                 await downloadTrack({
                                   trackId: track.Id,
                                   name: track.Name,
-                                  url,
-                                  container: ms?.Container,
-                                  bitrate: ms?.Bitrate,
+                                  url: request.url,
+                                  container:
+                                    request.container ??
+                                    ms?.Container ??
+                                    undefined,
+                                  bitrate:
+                                    request.bitrate ?? ms?.Bitrate ?? undefined,
                                   track: track as any,
                                 });
                                 setDownloadedMap((m) => ({

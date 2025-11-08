@@ -20,7 +20,11 @@ import {
   checkIsFavorite,
   removeItemsFromPlaylist,
 } from "@/lib/jellyfin";
-import { isCollectionDownloaded, downloadTrack } from "@/lib/downloads";
+import {
+  isCollectionDownloaded,
+  downloadTrack,
+  resolveDownloadRequest,
+} from "@/lib/downloads";
 import { localDb } from "@/lib/database";
 import { hybridData } from "@/lib/sync";
 import { logger } from "@/lib/logger";
@@ -391,8 +395,20 @@ export default function AddToPlaylistDialog({
                 const auth = JSON.parse(
                   localStorage.getItem("authData") || "{}"
                 );
-                const url = `${auth.serverAddress}/Audio/${trackId}/stream?static=true&api_key=${auth.accessToken}`;
-                await downloadTrack({ trackId, name: trackName, url });
+                const request = resolveDownloadRequest(trackId, {
+                  serverAddress: auth?.serverAddress,
+                  accessToken: auth?.accessToken,
+                  userId: auth?.userId,
+                });
+                if (request.url) {
+                  await downloadTrack({
+                    trackId,
+                    name: trackName,
+                    url: request.url,
+                    container: request.container ?? undefined,
+                    bitrate: request.bitrate ?? undefined,
+                  });
+                }
               }
             } catch {}
             // Update local counts optimistically
