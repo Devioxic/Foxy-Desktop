@@ -400,10 +400,15 @@ const AlbumView = () => {
         showSuccess("Removed album downloads");
       } else {
         const res = await downloadAlbumById(albumInfo.Id, albumInfo.Name);
-        setIsDownloaded(true);
-        showSuccess(
-          `Downloaded ${res.downloaded} tracks${res.failed ? `, ${res.failed} failed` : ""}`
-        );
+        const fullyDownloaded = await isCollectionDownloaded(albumInfo.Id);
+        setIsDownloaded(fullyDownloaded);
+        if (res.failed > 0) {
+          showError(
+            `Downloaded ${res.downloaded} tracks, ${res.failed} failed. The album will appear in Downloads once every track is saved.`
+          );
+        } else {
+          showSuccess(`Downloaded ${res.downloaded} tracks`);
+        }
       }
     } catch (e: any) {
       showError(e?.message || "Download failed");

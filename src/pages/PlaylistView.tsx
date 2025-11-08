@@ -10,7 +10,7 @@ import TrackList from "@/components/TrackList";
 import { useMusicPlayer } from "@/contexts/MusicContext";
 import { Track as MusicTrack } from "@/contexts/MusicContext";
 import BackButton from "@/components/BackButton";
-import { formatDuration } from "@/utils/media";
+import { formatDuration, resolvePrimaryImageUrl } from "@/utils/media";
 import {
   Play,
   Star,
@@ -45,6 +45,7 @@ import {
   removeFromFavorites,
   checkIsFavorite,
   deletePlaylist,
+  getItemsUserDataMap,
 } from "@/lib/jellyfin";
 import { BaseItemDto } from "@jellyfin/sdk/lib/generated-client/models";
 import { useAuthData } from "@/hooks/useAuthData";
@@ -69,6 +70,7 @@ interface Track extends BaseItemDto {
   Artists?: string[];
   ProductionYear?: number;
   ParentIndexNumber?: number;
+  LocalImages?: { Primary?: string };
 }
 
 interface PlaylistInfo extends BaseItemDto {
@@ -102,6 +104,7 @@ const PlaylistView = () => {
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
   const spinnerPlaylistRef = useRef<string | null>(null);
+  const downloadsRefreshTimeout = useRef<number | null>(null);
 
   const handleLyricsToggle = (show: boolean) => {
     setShowLyrics(show);
@@ -154,70 +157,54 @@ const PlaylistView = () => {
         setTracks(playlistItems);
         setPlaylistInfo(normalizedInfo);
 
-        if (playlistId) {
-          try {
-            const downloaded = await isCollectionDownloaded(playlistId);
-            setIsDownloaded(downloaded);
-          } catch (downloadError) {
-            logger.warn("Failed to check downloaded state", downloadError);
+        const initialTrackFavoriteMap: Record<string, boolean> = {};
+        const missingFavoriteIds: string[] = [];
+
+        for (const track of playlistItems) {
+          if (!track?.Id) continue;
+          const userFavorite = (track as any)?.UserData?.IsFavorite;
+          if (typeof userFavorite === "boolean") {
+            initialTrackFavoriteMap[track.Id] = userFavorite;
+          } else {
+            missingFavoriteIds.push(track.Id);
           }
         }
 
         if (!isOffline && hasAuth) {
-          try {
-            const favoriteStatus = await checkIsFavorite(
-              authData.serverAddress,
-              authData.accessToken,
-              playlistId
-            );
-            setIsFavorite(favoriteStatus);
-          } catch (error) {
-            logger.error("Error checking favorite status:", error);
+          let playlistFavoriteSet = false;
+          if (typeof (info as any)?.UserData?.IsFavorite === "boolean") {
+            setIsFavorite(Boolean((info as any).UserData.IsFavorite));
+            playlistFavoriteSet = true;
           }
 
-          if (playlistItems.length > 0) {
-            const trackFavoritePromises = playlistItems.map(
-              async (track: Track) => {
-                if (!track.Id) {
-                  return null;
-                }
-                try {
-                  const isFavoriteTrack = await checkIsFavorite(
-                    authData.serverAddress,
-                    authData.accessToken,
-                    track.Id
-                  );
-                  return { id: track.Id, isFavorite: isFavoriteTrack };
-                } catch (error) {
-                  logger.error(
-                    `Failed to check favorite status for track ${track.Id}:`,
-                    error
-                  );
-                  return { id: track.Id, isFavorite: false };
-                }
-              }
-            );
+          if (!playlistFavoriteSet) {
+            try {
+              const favoriteStatus = await checkIsFavorite(
+                authData.serverAddress,
+                authData.accessToken,
+                playlistId
+              );
+              setIsFavorite(favoriteStatus);
+            } catch (error) {
+              logger.error("Error checking favorite status:", error);
+            }
+          }
 
-            const trackFavoriteResults = await Promise.all(
-              trackFavoritePromises
-            );
-            const trackFavoriteMap: Record<string, boolean> = {};
-
-            trackFavoriteResults.forEach(
-              (result: { id: string; isFavorite: boolean } | null) => {
-                if (result) {
-                  trackFavoriteMap[result.id] = result.isFavorite;
-                }
+          if (missingFavoriteIds.length > 0) {
+            try {
+              const favoriteMap = await getItemsUserDataMap(missingFavoriteIds);
+              for (const id of missingFavoriteIds) {
+                initialTrackFavoriteMap[id] = favoriteMap[id] ?? false;
               }
-            );
-            setTrackFavorites(trackFavoriteMap);
-          } else {
-            setTrackFavorites({});
+            } catch (error) {
+              logger.warn("Failed to resolve favorite states in bulk", error);
+            }
           }
         } else {
           setIsFavorite(false);
-          setTrackFavorites({});
         }
+
+        setTrackFavorites(initialTrackFavoriteMap);
       } catch (error) {
         logger.error("Failed to load playlist data", error);
         if (isOffline) {
@@ -247,12 +234,22 @@ const PlaylistView = () => {
     }
 
     const handleDownloadsUpdate = () => {
-      loadPlaylistData();
+      if (downloadsRefreshTimeout.current) {
+        window.clearTimeout(downloadsRefreshTimeout.current);
+      }
+      downloadsRefreshTimeout.current = window.setTimeout(() => {
+        downloadsRefreshTimeout.current = null;
+        loadPlaylistData();
+      }, 300);
     };
 
     window.addEventListener("downloadsUpdate", handleDownloadsUpdate);
     return () => {
       window.removeEventListener("downloadsUpdate", handleDownloadsUpdate);
+      if (downloadsRefreshTimeout.current) {
+        window.clearTimeout(downloadsRefreshTimeout.current);
+        downloadsRefreshTimeout.current = null;
+      }
     };
   }, [playlistId, loadPlaylistData]);
 
@@ -290,6 +287,7 @@ const PlaylistView = () => {
     AlbumArtist: track.AlbumArtist,
     Album: track.Album,
     ImageTags: track.ImageTags,
+    LocalImages: (track as any)?.LocalImages,
     RunTimeTicks: track.RunTimeTicks,
     MediaSources:
       track.MediaSources?.map((source) => ({
@@ -523,10 +521,16 @@ const PlaylistView = () => {
     );
   }
 
-  const imageUrl =
-    playlistInfo.Id && playlistInfo.ImageTags?.Primary
-      ? `${authData.serverAddress}/Items/${playlistInfo.Id}/Images/Primary?maxWidth=300&quality=90`
-      : null;
+  const imageUrl = resolvePrimaryImageUrl({
+    item: playlistInfo as any,
+    serverAddress: authData.serverAddress,
+    accessToken: authData.accessToken || undefined,
+    size: 300,
+  });
+
+  useEffect(() => {
+    setImageError(false);
+  }, [imageUrl]);
 
   const showPlaceholder = !imageUrl || imageError;
 

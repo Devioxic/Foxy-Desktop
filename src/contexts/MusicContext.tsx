@@ -14,6 +14,7 @@ import {
   getTrackNormalizationInfo,
 } from "@/lib/jellyfin";
 import { getLocalUrlForTrack } from "@/lib/downloads";
+import { resolvePrimaryImageUrl } from "@/utils/media";
 
 export interface Track {
   Id: string;
@@ -22,6 +23,7 @@ export interface Track {
   AlbumArtist?: string;
   Album?: string;
   ImageTags?: { Primary?: string };
+  LocalImages?: { Primary?: string };
   RunTimeTicks?: number;
   MediaSources?: Array<{
     Path: string;
@@ -436,10 +438,13 @@ export const MusicProvider: React.FC<MusicProviderProps> = ({ children }) => {
   // Helper function to update Media Session API
   const updateMediaSession = (track: Track | null) => {
     if ("mediaSession" in navigator && track) {
-      const albumArt =
-        track.ImageTags?.Primary && serverAddress
-          ? `${serverAddress}/Items/${track.Id}/Images/Primary?maxWidth=512&quality=90`
-          : undefined;
+      const albumArt = resolvePrimaryImageUrl({
+        item: track as any,
+        serverAddress,
+        accessToken: accessToken || undefined,
+        size: 512,
+        fallbackId: (track as any)?.AlbumId,
+      }) || undefined;
 
       navigator.mediaSession.metadata = new MediaMetadata({
         title: track.Name || "Unknown Title",

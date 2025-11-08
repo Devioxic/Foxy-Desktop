@@ -15,6 +15,7 @@ import {
 import { getAlbumItems } from "@/lib/jellyfin";
 import AlbumCard from "@/components/AlbumCard";
 import LoadingSkeleton from "@/components/LoadingSkeleton";
+import { resolvePrimaryImageUrl } from "@/utils/media";
 
 const Home = () => {
   const navigate = useNavigate();
@@ -98,28 +99,35 @@ const Home = () => {
                 {/* Quick Access Grid */}
                 {recentlyPlayed.length > 0 && (
                   <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3 mb-8">
-                    {recentlyPlayed.slice(0, 6).map((item) => (
-                      <Card
-                        key={item.Id}
-                        className="group cursor-pointer hover:shadow-md transition-shadow overflow-hidden bg-card/50 text-card-foreground border border-border dark:border-0 dark:bg-muted/30"
-                        style={{ boxSizing: "content-box" }}
-                        onClick={() => navigate(`/album/${item.Id}`)}
-                      >
-                        <CardContent className="h-full w-full p-0">
-                          <div className="flex items-center h-full w-full">
-                            <div className="flex-shrink-0 relative rounded-l-lg flex items-center justify-center p-2.5">
-                              {item.ImageTags?.Primary ? (
-                                <img
-                                  src={`${authData.serverAddress}/Items/${item.Id}/Images/Primary?maxWidth=96&quality=90`}
-                                  alt={item.Name}
-                                  className="w-20 h-20 object-cover rounded-md flex-shrink-0"
-                                />
-                              ) : (
-                                <div className="w-20 h-20 flex items-center justify-center bg-accent rounded-md flex-shrink-0">
-                                  <Music className="w-8 h-8 text-accent-foreground opacity-80" />
-                                </div>
-                              )}
-                            </div>
+                    {recentlyPlayed.slice(0, 6).map((item) => {
+                      const art = resolvePrimaryImageUrl({
+                        item: item as any,
+                        serverAddress: authData.serverAddress,
+                        accessToken: authData.accessToken || undefined,
+                        size: 96,
+                      });
+                      return (
+                        <Card
+                          key={item.Id}
+                          className="group cursor-pointer hover:shadow-md transition-shadow overflow-hidden bg-card/50 text-card-foreground border border-border dark:border-0 dark:bg-muted/30"
+                          style={{ boxSizing: "content-box" }}
+                          onClick={() => navigate(`/album/${item.Id}`)}
+                        >
+                          <CardContent className="h-full w-full p-0">
+                            <div className="flex items-center h-full w-full">
+                              <div className="flex-shrink-0 relative rounded-l-lg flex items-center justify-center p-2.5">
+                                {art ? (
+                                  <img
+                                    src={art}
+                                    alt={item.Name}
+                                    className="w-20 h-20 object-cover rounded-md flex-shrink-0"
+                                  />
+                                ) : (
+                                  <div className="w-20 h-20 flex items-center justify-center bg-accent rounded-md flex-shrink-0">
+                                    <Music className="w-8 h-8 text-accent-foreground opacity-80" />
+                                  </div>
+                                )}
+                              </div>
                             <div className="flex-1 p-4 min-w-0">
                               <h3
                                 className="font-medium text-foreground text-sm leading-tight mb-1 overflow-hidden"
@@ -161,8 +169,9 @@ const Home = () => {
                             </div>
                           </div>
                         </CardContent>
-                      </Card>
-                    ))}
+                        </Card>
+                      );
+                    })}
                   </div>
                 )}
 

@@ -28,6 +28,7 @@ import { ListMusic, Loader2, Heart, Circle, CircleDot } from "lucide-react";
 import { BaseItemDto } from "@jellyfin/sdk/lib/generated-client/models";
 import BlurHashImage from "@/components/BlurHashImage";
 import { APP_EVENTS, FavoriteStateChangedDetail } from "@/constants/events";
+import { resolvePrimaryImageUrl } from "@/utils/media";
 
 interface AddToPlaylistDialogProps {
   open: boolean;
@@ -91,13 +92,16 @@ export default function AddToPlaylistDialog({
   // Get auth data from localStorage
   const authData = JSON.parse(localStorage.getItem("authData") || "{}");
   const serverAddress = authData.serverAddress || "";
+  const accessToken = authData.accessToken || undefined;
 
   // Helper function to get playlist image
   const getPlaylistImage = (playlist: BaseItemDto, size: number = 150) => {
-    if (playlist.ImageTags?.Primary && serverAddress && playlist.Id) {
-      return `${serverAddress}/Items/${playlist.Id}/Images/Primary?maxWidth=${size}&quality=90`;
-    }
-    return null;
+    return resolvePrimaryImageUrl({
+      item: playlist as any,
+      serverAddress,
+      accessToken,
+      size,
+    });
   };
 
   // Helper function to get playlist blur hash

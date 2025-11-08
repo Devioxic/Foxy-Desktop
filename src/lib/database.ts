@@ -18,7 +18,10 @@ const SCHEMA = `
     image_tags TEXT, -- JSON object
     image_blur_hashes TEXT, -- JSON object
     backdrop_image_tags TEXT, -- JSON array
-    user_data TEXT, -- JSON object with favorite status, play count, etc.
+  user_data TEXT, -- JSON object with favorite status, play count, etc.
+  local_primary_image TEXT,
+  local_primary_image_tag TEXT,
+  local_primary_image_updated_at INTEGER,
     album_count INTEGER DEFAULT 0,
     song_count INTEGER DEFAULT 0,
     sync_timestamp INTEGER NOT NULL,
@@ -38,7 +41,10 @@ const SCHEMA = `
     image_tags TEXT, -- JSON object
     image_blur_hashes TEXT, -- JSON object
     backdrop_image_tags TEXT, -- JSON array
-    user_data TEXT, -- JSON object
+  user_data TEXT, -- JSON object
+  local_primary_image TEXT,
+  local_primary_image_tag TEXT,
+  local_primary_image_updated_at INTEGER,
     child_count INTEGER DEFAULT 0,
     cumulative_run_time_ticks INTEGER DEFAULT 0,
     date_created TEXT,
@@ -63,8 +69,11 @@ const SCHEMA = `
     run_time_ticks INTEGER,
     production_year INTEGER,
     image_tags TEXT, -- JSON object
-    image_blur_hashes TEXT, -- JSON object
+  image_blur_hashes TEXT, -- JSON object
     user_data TEXT, -- JSON object
+  local_primary_image TEXT,
+  local_primary_image_tag TEXT,
+  local_primary_image_updated_at INTEGER,
     media_sources TEXT, -- JSON array
     chapter_images_date_modified TEXT,
     lyrics TEXT,
@@ -80,8 +89,11 @@ const SCHEMA = `
     name TEXT NOT NULL,
     overview TEXT,
     image_tags TEXT, -- JSON object
-    image_blur_hashes TEXT, -- JSON object
+  image_blur_hashes TEXT, -- JSON object
     user_data TEXT, -- JSON object
+  local_primary_image TEXT,
+  local_primary_image_tag TEXT,
+  local_primary_image_updated_at INTEGER,
     child_count INTEGER DEFAULT 0,
     cumulative_run_time_ticks INTEGER DEFAULT 0,
     date_created TEXT,
@@ -225,6 +237,77 @@ class LocalDatabase {
       try {
         this.db.exec("ALTER TABLE tracks ADD COLUMN cached_at INTEGER");
       } catch (e) {}
+      // Local image columns for offline artwork
+      const imageColumnMigrations: Array<{ table: string; column: string; sql: string }> = [
+        {
+          table: "artists",
+          column: "local_primary_image",
+          sql: "ALTER TABLE artists ADD COLUMN local_primary_image TEXT",
+        },
+        {
+          table: "artists",
+          column: "local_primary_image_tag",
+          sql: "ALTER TABLE artists ADD COLUMN local_primary_image_tag TEXT",
+        },
+        {
+          table: "artists",
+          column: "local_primary_image_updated_at",
+          sql: "ALTER TABLE artists ADD COLUMN local_primary_image_updated_at INTEGER",
+        },
+        {
+          table: "albums",
+          column: "local_primary_image",
+          sql: "ALTER TABLE albums ADD COLUMN local_primary_image TEXT",
+        },
+        {
+          table: "albums",
+          column: "local_primary_image_tag",
+          sql: "ALTER TABLE albums ADD COLUMN local_primary_image_tag TEXT",
+        },
+        {
+          table: "albums",
+          column: "local_primary_image_updated_at",
+          sql: "ALTER TABLE albums ADD COLUMN local_primary_image_updated_at INTEGER",
+        },
+        {
+          table: "tracks",
+          column: "local_primary_image",
+          sql: "ALTER TABLE tracks ADD COLUMN local_primary_image TEXT",
+        },
+        {
+          table: "tracks",
+          column: "local_primary_image_tag",
+          sql: "ALTER TABLE tracks ADD COLUMN local_primary_image_tag TEXT",
+        },
+        {
+          table: "tracks",
+          column: "local_primary_image_updated_at",
+          sql: "ALTER TABLE tracks ADD COLUMN local_primary_image_updated_at INTEGER",
+        },
+        {
+          table: "playlists",
+          column: "local_primary_image",
+          sql: "ALTER TABLE playlists ADD COLUMN local_primary_image TEXT",
+        },
+        {
+          table: "playlists",
+          column: "local_primary_image_tag",
+          sql: "ALTER TABLE playlists ADD COLUMN local_primary_image_tag TEXT",
+        },
+        {
+          table: "playlists",
+          column: "local_primary_image_updated_at",
+          sql: "ALTER TABLE playlists ADD COLUMN local_primary_image_updated_at INTEGER",
+        },
+      ];
+
+      for (const migration of imageColumnMigrations) {
+        try {
+          this.db.exec(migration.sql);
+        } catch (e) {
+          // ignore if column already exists
+        }
+      }
 
       // Save the database
       await this.saveDatabase();
@@ -357,6 +440,12 @@ class LocalDatabase {
     name?: string
   ) {
     if (!this.db) throw new Error("Database not initialized");
+
+    if (type === "album") {
+      await this.refreshAlbumDownloadFlag(id, name);
+      return;
+    }
+
     const stmt = this.db.prepare(
       `INSERT OR REPLACE INTO downloaded_collections (id, type, name, downloaded_at) VALUES (?, ?, ?, strftime('%s','now'))`
     );
@@ -373,6 +462,62 @@ class LocalDatabase {
     stmt.run([id]);
     stmt.free();
     await this.saveDatabase();
+  }
+
+  async refreshAlbumDownloadFlag(
+    albumId: string,
+    preferredName?: string
+  ): Promise<boolean> {
+    if (!this.db) throw new Error("Database not initialized");
+
+    const downloadedRow = this.exec(
+      `SELECT COUNT(*) AS downloaded
+       FROM downloads d
+       INNER JOIN tracks t ON t.id = d.track_id
+       WHERE t.album_id = ?`,
+      [albumId]
+    )[0];
+    const downloadedTracks = downloadedRow?.downloaded ?? 0;
+
+    const isCurrentlyMarked = this.exec(
+      `SELECT 1 FROM downloaded_collections WHERE id = ? AND type = 'album' LIMIT 1`,
+      [albumId]
+    ).length
+      ? true
+      : false;
+
+    const albumRow = this.exec(
+      `SELECT name, child_count FROM albums WHERE id = ? LIMIT 1`,
+      [albumId]
+    )[0];
+    const expectedTracksRaw = albumRow?.child_count;
+    const expectedTracks =
+      expectedTracksRaw !== undefined && expectedTracksRaw !== null
+        ? Number(expectedTracksRaw)
+        : 0;
+    const hasExpected = Number.isFinite(expectedTracks) && expectedTracks > 0;
+
+    if (!hasExpected || downloadedTracks < expectedTracks) {
+      if (isCurrentlyMarked) {
+        const stmt = this.db.prepare(
+          `DELETE FROM downloaded_collections WHERE id = ? AND type = 'album'`
+        );
+        stmt.run([albumId]);
+        stmt.free();
+        await this.saveDatabase();
+      }
+      return false;
+    }
+
+    const albumName = preferredName || albumRow?.name || null;
+
+    const stmt = this.db.prepare(
+      `INSERT OR REPLACE INTO downloaded_collections (id, type, name, downloaded_at) VALUES (?, 'album', ?, strftime('%s','now'))`
+    );
+    stmt.run([albumId, albumName]);
+    stmt.free();
+    await this.saveDatabase();
+    return true;
   }
 
   async getDownloadedCollections(): Promise<
@@ -433,11 +578,16 @@ class LocalDatabase {
       INSERT OR REPLACE INTO artists (
         id, name, overview, production_year, genres, image_tags, 
         image_blur_hashes, backdrop_image_tags, user_data, 
-        album_count, song_count, sync_timestamp, updated_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        album_count, song_count, sync_timestamp, updated_at,
+        local_primary_image, local_primary_image_tag, local_primary_image_updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
 
     for (const artist of artists) {
+      const existingLocal = this.exec(
+        `SELECT local_primary_image, local_primary_image_tag, local_primary_image_updated_at FROM artists WHERE id = ? LIMIT 1`,
+        [artist.Id]
+      )[0];
       stmt.run([
         artist.Id,
         artist.Name,
@@ -452,6 +602,9 @@ class LocalDatabase {
         artist.SongCount || 0,
         timestamp,
         timestamp,
+        existingLocal?.local_primary_image || null,
+        existingLocal?.local_primary_image_tag || null,
+        existingLocal?.local_primary_image_updated_at || null,
       ]);
     }
 
@@ -519,11 +672,16 @@ class LocalDatabase {
         id, name, overview, production_year, genres, album_artists,
         artist_items, image_tags, image_blur_hashes, backdrop_image_tags,
         user_data, child_count, cumulative_run_time_ticks, date_created,
-        sync_timestamp, updated_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        sync_timestamp, updated_at, local_primary_image, local_primary_image_tag,
+        local_primary_image_updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
 
     for (const album of albums) {
+      const existingLocal = this.exec(
+        `SELECT local_primary_image, local_primary_image_tag, local_primary_image_updated_at FROM albums WHERE id = ? LIMIT 1`,
+        [album.Id]
+      )[0];
       stmt.run([
         album.Id,
         album.Name,
@@ -541,6 +699,9 @@ class LocalDatabase {
         album.DateCreated || null,
         timestamp,
         timestamp,
+        existingLocal?.local_primary_image || null,
+        existingLocal?.local_primary_image_tag || null,
+        existingLocal?.local_primary_image_updated_at || null,
       ]);
     }
 
@@ -591,8 +752,9 @@ class LocalDatabase {
         genres, index_number, parent_index_number, track_number,
         run_time_ticks, production_year, image_tags, image_blur_hashes,
         user_data, media_sources, chapter_images_date_modified,
-        sync_timestamp, updated_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        sync_timestamp, updated_at, local_primary_image, local_primary_image_tag,
+        local_primary_image_updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
 
     for (const track of tracks) {
@@ -601,6 +763,10 @@ class LocalDatabase {
       try {
         existing = (await this.getTrackById(track.Id!)) as any;
       } catch {}
+      const existingLocal = this.exec(
+        `SELECT local_primary_image, local_primary_image_tag, local_primary_image_updated_at FROM tracks WHERE id = ? LIMIT 1`,
+        [track.Id]
+      )[0];
 
       const pick = <T>(
         n: T | undefined,
@@ -684,6 +850,9 @@ class LocalDatabase {
         (merged as any).ChapterImagesDateModified || null,
         timestamp,
         timestamp,
+        existingLocal?.local_primary_image || null,
+        existingLocal?.local_primary_image_tag || null,
+        existingLocal?.local_primary_image_updated_at || null,
       ]);
     }
 
@@ -774,6 +943,57 @@ class LocalDatabase {
     return results.map((r) => String(r.id));
   }
 
+  private getTableForEntity(
+    type: "album" | "artist" | "track" | "playlist"
+  ): string {
+    switch (type) {
+      case "album":
+        return "albums";
+      case "artist":
+        return "artists";
+      case "track":
+        return "tracks";
+      case "playlist":
+        return "playlists";
+      default:
+        throw new Error(`Unknown entity type: ${type}`);
+    }
+  }
+
+  async getLocalPrimaryImageInfo(
+    type: "album" | "artist" | "track" | "playlist",
+    id: string
+  ): Promise<{ path: string | null; tag: string | null } | null> {
+    if (!id) return null;
+    const table = this.getTableForEntity(type);
+    const rows = this.exec(
+      `SELECT local_primary_image as path, local_primary_image_tag as tag FROM ${table} WHERE id = ? LIMIT 1`,
+      [id]
+    );
+    if (!rows.length) return null;
+    return {
+      path: rows[0]?.path ?? null,
+      tag: rows[0]?.tag ?? null,
+    };
+  }
+
+  async setLocalPrimaryImage(
+    type: "album" | "artist" | "track" | "playlist",
+    id: string,
+    relPath: string | null,
+    imageTag?: string | null
+  ): Promise<void> {
+    if (!this.db) throw new Error("Database not initialized");
+    if (!id) return;
+    const table = this.getTableForEntity(type);
+    const stmt = this.db.prepare(
+      `UPDATE ${table} SET local_primary_image = ?, local_primary_image_tag = ?, local_primary_image_updated_at = strftime('%s','now') WHERE id = ?`
+    );
+    stmt.run([relPath || null, imageTag || null, id]);
+    stmt.free();
+    await this.saveDatabase();
+  }
+
   // Mark tracks/albums as locally cached (downloaded)
   async markTracksCached(ids: string[]): Promise<void> {
     if (!ids.length) return;
@@ -838,11 +1058,16 @@ class LocalDatabase {
       INSERT OR REPLACE INTO playlists (
         id, name, overview, image_tags, image_blur_hashes, user_data,
         child_count, cumulative_run_time_ticks, date_created, date_modified,
-        sync_timestamp, updated_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        sync_timestamp, updated_at, local_primary_image, local_primary_image_tag,
+        local_primary_image_updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
 
     for (const playlist of playlists) {
+      const existingLocal = this.exec(
+        `SELECT local_primary_image, local_primary_image_tag, local_primary_image_updated_at FROM playlists WHERE id = ? LIMIT 1`,
+        [playlist.Id]
+      )[0];
       stmt.run([
         playlist.Id,
         playlist.Name,
@@ -856,6 +1081,9 @@ class LocalDatabase {
         null, // DateModified not available in BaseItemDto
         timestamp,
         timestamp,
+        existingLocal?.local_primary_image || null,
+        existingLocal?.local_primary_image_tag || null,
+        existingLocal?.local_primary_image_updated_at || null,
       ]);
     }
 
@@ -1188,8 +1416,14 @@ class LocalDatabase {
   }
 
   // Helper methods to convert database rows back to BaseItemDto objects
+  private toMediaUrl(relPath?: string | null): string | undefined {
+    if (!relPath) return undefined;
+    const normalized = String(relPath).replace(/^\/+/, "");
+    return `media:///${encodeURI(normalized)}`;
+  }
+
   private rowToArtist(row: any): BaseItemDto {
-    return {
+    const artist: any = {
       Id: row.id,
       Name: row.name,
       Overview: row.overview,
@@ -1203,6 +1437,22 @@ class LocalDatabase {
       SongCount: row.song_count,
       Type: "MusicArtist",
     } as BaseItemDto;
+
+    const localPrimary = this.toMediaUrl(row.local_primary_image);
+    if (localPrimary) {
+      (artist as any).LocalImages = {
+        ...(artist as any).LocalImages,
+        Primary: localPrimary,
+      };
+      if (!artist.ImageTags?.Primary && row.local_primary_image_tag) {
+        artist.ImageTags = {
+          ...(artist.ImageTags || {}),
+          Primary: row.local_primary_image_tag,
+        };
+      }
+    }
+
+    return artist;
   }
 
   private rowToAlbum(row: any): BaseItemDto {
@@ -1213,7 +1463,7 @@ class LocalDatabase {
       (Array.isArray(artistItems) && artistItems[0]?.Name) ||
       undefined;
 
-    return {
+    const album: any = {
       Id: row.id,
       Name: row.name,
       Overview: row.overview,
@@ -1231,10 +1481,26 @@ class LocalDatabase {
       DateCreated: row.date_created,
       Type: "MusicAlbum",
     } as BaseItemDto;
+
+    const localPrimary = this.toMediaUrl(row.local_primary_image);
+    if (localPrimary) {
+      (album as any).LocalImages = {
+        ...(album as any).LocalImages,
+        Primary: localPrimary,
+      };
+      if (!album.ImageTags?.Primary && row.local_primary_image_tag) {
+        album.ImageTags = {
+          ...(album.ImageTags || {}),
+          Primary: row.local_primary_image_tag,
+        };
+      }
+    }
+
+    return album;
   }
 
   private rowToTrack(row: any): BaseItemDto {
-    return {
+    const track: any = {
       Id: row.id,
       Name: row.name,
       AlbumId: row.album_id,
@@ -1254,10 +1520,26 @@ class LocalDatabase {
       ChapterImagesDateModified: row.chapter_images_date_modified,
       Type: "Audio",
     } as BaseItemDto;
+
+    const localPrimary = this.toMediaUrl(row.local_primary_image);
+    if (localPrimary) {
+      (track as any).LocalImages = {
+        ...(track as any).LocalImages,
+        Primary: localPrimary,
+      };
+      if (!track.ImageTags?.Primary && row.local_primary_image_tag) {
+        track.ImageTags = {
+          ...(track.ImageTags || {}),
+          Primary: row.local_primary_image_tag,
+        };
+      }
+    }
+
+    return track;
   }
 
   private rowToPlaylist(row: any): BaseItemDto {
-    return {
+    const playlist: any = {
       Id: row.id,
       Name: row.name,
       Overview: row.overview,
@@ -1270,6 +1552,22 @@ class LocalDatabase {
       DateModified: row.date_modified,
       Type: "Playlist",
     } as BaseItemDto;
+
+    const localPrimary = this.toMediaUrl(row.local_primary_image);
+    if (localPrimary) {
+      (playlist as any).LocalImages = {
+        ...(playlist as any).LocalImages,
+        Primary: localPrimary,
+      };
+      if (!playlist.ImageTags?.Primary && row.local_primary_image_tag) {
+        playlist.ImageTags = {
+          ...(playlist.ImageTags || {}),
+          Primary: row.local_primary_image_tag,
+        };
+      }
+    }
+
+    return playlist;
   }
 }
 

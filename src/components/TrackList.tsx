@@ -30,6 +30,7 @@ interface Track {
   Album?: string;
   IndexNumber?: number;
   ImageTags?: { Primary?: string };
+  LocalImages?: { Primary?: string };
   AlbumArtist?: string;
   Artist?: string;
   MediaSources?: any[];
@@ -97,7 +98,8 @@ const TrackList: React.FC<TrackListProps> = React.memo(
     const [downloadedMap, setDownloadedMap] = useState<Record<string, boolean>>(
       {}
     );
-    const [dlLoading, setDlLoading] = useState<Record<string, boolean>>({});
+  const [dlLoading, setDlLoading] = useState<Record<string, boolean>>({});
+  const trackIdsRef = useRef<Set<string>>(new Set());
 
     const isCurrentTrack = (trackId?: string) =>
       trackId && currentTrack?.Id === trackId;
@@ -118,6 +120,7 @@ const TrackList: React.FC<TrackListProps> = React.memo(
       Artists: track.Artists,
       RunTimeTicks: track.RunTimeTicks,
       ImageTags: track.ImageTags,
+      LocalImages: (track as any)?.LocalImages,
       MediaSources: track.MediaSources || [],
     });
 
@@ -129,6 +132,9 @@ const TrackList: React.FC<TrackListProps> = React.memo(
 
     // Download state handling
     const lastIdSignatureRef = useRef<string | null>(null);
+    useEffect(() => {
+      trackIdsRef.current = new Set(tracks.map((t) => t.Id).filter(Boolean) as string[]);
+    }, [tracks]);
     useEffect(() => {
       const idSignature = tracks.map((t) => t.Id).join(",");
       if (idSignature === lastIdSignatureRef.current) return;
@@ -168,6 +174,32 @@ const TrackList: React.FC<TrackListProps> = React.memo(
         cancelled = true;
       };
     }, [tracks, assumeAllDownloaded]);
+
+    useEffect(() => {
+      const handler = (event: Event) => {
+        const detail = (event as CustomEvent<{ trackId?: string; downloaded?: boolean }>).detail;
+        if (!detail?.trackId) return;
+        if (!trackIdsRef.current.has(detail.trackId)) return;
+        setDownloadedMap((prev) => {
+          const current = prev[detail.trackId];
+          if (current === detail.downloaded) return prev;
+          return {
+            ...prev,
+            [detail.trackId!]: Boolean(detail.downloaded),
+          };
+        });
+      };
+      window.addEventListener(
+        "trackDownloadStatusChanged",
+        handler as EventListener
+      );
+      return () => {
+        window.removeEventListener(
+          "trackDownloadStatusChanged",
+          handler as EventListener
+        );
+      };
+    }, []);
 
     return (
       <>
@@ -390,6 +422,7 @@ const TrackList: React.FC<TrackListProps> = React.memo(
                                   url,
                                   container: ms?.Container,
                                   bitrate: ms?.Bitrate,
+                                  track: track as any,
                                 });
                                 setDownloadedMap((m) => ({
                                   ...m,

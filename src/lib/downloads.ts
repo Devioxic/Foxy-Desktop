@@ -1,5 +1,6 @@
 import { localDb } from "./database";
 import { logger } from "./logger";
+import type { BaseItemDto } from "@jellyfin/sdk/lib/generated-client/models";
 
 // Contract:
 // - downloadTrack: fetches audio for a trackId using provided URL, saves to userData/media, records in DB.
@@ -8,6 +9,77 @@ import { logger } from "./logger";
 
 const toSafeFilename = (s: string) =>
   s.replace(/[^a-zA-Z0-9._-]+/g, "-").slice(0, 120);
+
+type ImageEntity = "album" | "playlist" | "track" | "artist";
+
+const determineImageExtension = (contentType: string | null): string => {
+  if (!contentType) return "jpg";
+  if (contentType.includes("png")) return "png";
+  if (contentType.includes("webp")) return "webp";
+  if (contentType.includes("gif")) return "gif";
+  return "jpg";
+};
+
+async function ensurePrimaryImageCached(params: {
+  itemId: string;
+  type: ImageEntity;
+  serverAddress?: string;
+  accessToken?: string;
+  imageTag?: string | null;
+  displayName?: string;
+}): Promise<string | null> {
+  const { itemId, type, serverAddress, accessToken, imageTag, displayName } =
+    params;
+  if (!itemId) return null;
+
+  await localDb.initialize();
+  const existing = await localDb.getLocalPrimaryImageInfo(type, itemId);
+  if (existing?.path && (!imageTag || existing.tag === imageTag)) {
+    return existing.path;
+  }
+
+  if (!serverAddress || !accessToken) {
+    return existing?.path || null;
+  }
+
+  if (!(window as any).electronAPI?.mediaSave) {
+    return existing?.path || null;
+  }
+
+  try {
+  const tagQuery = imageTag ? `&tag=${encodeURIComponent(imageTag)}` : "";
+  const url = `${serverAddress}/Items/${itemId}/Images/Primary?maxWidth=600&quality=90${tagQuery}&api_key=${accessToken}`;
+    const response = await fetch(url);
+    if (!response.ok) {
+      return existing?.path || null;
+    }
+    const contentType = response.headers.get("content-type");
+    const extension = determineImageExtension(contentType);
+    const baseName = toSafeFilename(displayName || itemId);
+    const tagSuffix = imageTag ? `-${toSafeFilename(imageTag)}` : "";
+    const rel = `images/${type}s/${baseName}-${itemId}${tagSuffix}.${extension}`;
+    const buffer = await response.arrayBuffer();
+    if ((window as any).electronAPI?.mediaSave) {
+      await (window as any).electronAPI.mediaSave(rel, buffer);
+    }
+    if (
+      existing?.path &&
+      existing.path !== rel &&
+      (window as any).electronAPI?.mediaDelete
+    ) {
+      try {
+        await (window as any).electronAPI.mediaDelete(existing.path);
+      } catch (cleanupError) {
+        logger.warn("Failed to clean up old cached image", cleanupError);
+      }
+    }
+    await localDb.setLocalPrimaryImage(type, itemId, rel, imageTag || null);
+    return rel;
+  } catch (error) {
+    logger.warn("Failed to cache image", error);
+    return existing?.path || null;
+  }
+}
 
 export async function getLocalUrlForTrack(
   trackId: string
@@ -35,8 +107,22 @@ export async function downloadTrack(params: {
   url: string; // resolved stream URL honoring current quality decision
   container?: string;
   bitrate?: number;
+  track?: BaseItemDto | null;
+  skipMetadata?: boolean;
+  suppressEvent?: boolean;
 }): Promise<string | null> {
-  const { trackId, name, url, container, bitrate } = params;
+  const {
+    trackId,
+    name,
+    url,
+    container,
+    bitrate,
+    track,
+    skipMetadata = false,
+    suppressEvent = false,
+  } = params;
+  const auth = JSON.parse(localStorage.getItem("authData") || "{}");
+  let trackMetadata: BaseItemDto | null | undefined = track;
   try {
     const res = await fetch(url);
     if (!res.ok) throw new Error(`Failed to download (${res.status})`);
@@ -58,35 +144,46 @@ export async function downloadTrack(params: {
         container: container || null,
         bitrate: bitrate || null,
         size_bytes: buf.byteLength,
-        source_server:
-          JSON.parse(localStorage.getItem("authData") || "{}")?.serverAddress ||
-          null,
+        source_server: auth?.serverAddress || null,
         checksum: null,
       });
-      // Persist track metadata locally so UI shows proper titles/artists
-      try {
-        const { getAudioStreamInfo, getAlbumInfo } = await import(
-          "@/lib/jellyfin"
-        );
-        const auth = JSON.parse(localStorage.getItem("authData") || "{}");
-        if (auth.serverAddress && auth.accessToken) {
-          const info = await getAudioStreamInfo(
-            auth.serverAddress,
-            auth.accessToken,
-            trackId
-          );
-          if (info?.item) {
-            await localDb.saveTracks([info.item as any]);
-            // Also save album metadata if we can derive AlbumId
-            const aid = (info.item as any).AlbumId;
-            if (aid) {
+      if (!skipMetadata) {
+        try {
+          let trackToPersist: BaseItemDto | null | undefined =
+            trackMetadata;
+          let albumIdForFetch: string | undefined;
+
+          if (!trackToPersist && auth.serverAddress && auth.accessToken) {
+            const { getAudioStreamInfo } = await import("@/lib/jellyfin");
+            const info = await getAudioStreamInfo(
+              auth.serverAddress,
+              auth.accessToken,
+              trackId
+            );
+            trackToPersist = info?.item || null;
+            albumIdForFetch = (trackToPersist as any)?.AlbumId;
+            if (albumIdForFetch) {
               try {
+                const { getAlbumInfo } = await import("@/lib/jellyfin");
                 const album = await getAlbumInfo(
                   auth.serverAddress,
                   auth.accessToken,
-                  aid
+                  albumIdForFetch
                 );
-                if (album) await localDb.saveAlbums([album as any]);
+                if (album) {
+                  await localDb.saveAlbums([album as any]);
+                  await ensurePrimaryImageCached({
+                    itemId: String(album.Id || albumIdForFetch),
+                    type: "album",
+                    serverAddress: auth?.serverAddress,
+                    accessToken: auth?.accessToken,
+                    imageTag:
+                      (album as any)?.ImageTags?.Primary ??
+                      (album as any)?.PrimaryImageTag ??
+                      null,
+                    displayName: (album as any)?.Name ?? undefined,
+                  });
+                }
               } catch (e) {
                 logger.warn(
                   "Saving album metadata after track download failed",
@@ -95,17 +192,89 @@ export async function downloadTrack(params: {
               }
             }
           }
+
+          if (trackToPersist) {
+            trackMetadata = trackToPersist;
+            await localDb.saveTracks([trackToPersist as any]);
+          }
+        } catch (e) {
+          logger.warn("Saving track metadata after download failed", e);
+        }
+      }
+      try {
+        if (trackMetadata) {
+          await ensurePrimaryImageCached({
+            itemId: trackId,
+            type: "track",
+            serverAddress: auth?.serverAddress,
+            accessToken: auth?.accessToken,
+            imageTag:
+              (trackMetadata as any)?.ImageTags?.Primary ??
+              (trackMetadata as any)?.PrimaryImageTag ??
+              null,
+            displayName: trackMetadata.Name ?? name,
+          });
+          const albumId = (trackMetadata as any)?.AlbumId;
+          if (albumId) {
+            await ensurePrimaryImageCached({
+              itemId: String(albumId),
+              type: "album",
+              serverAddress: auth?.serverAddress,
+              accessToken: auth?.accessToken,
+              imageTag:
+                (trackMetadata as any)?.AlbumPrimaryImageTag ??
+                (trackMetadata as any)?.Album?.PrimaryImageTag ??
+                null,
+              displayName:
+                (trackMetadata as any)?.Album ??
+                (trackMetadata as any)?.AlbumTitle ??
+                undefined,
+            });
+          }
         }
       } catch (e) {
-        logger.warn("Saving track metadata after download failed", e);
+        logger.warn("Caching track-related imagery failed", e);
       }
       try {
         await localDb.markTracksCached([trackId]);
       } catch {}
-      // Notify UI
+      if (!suppressEvent) {
+        let albumIdForRefresh: string | undefined;
+        let albumNameForRefresh: string | undefined;
+        try {
+          if (track && (track as any)?.AlbumId) {
+            albumIdForRefresh = (track as any).AlbumId;
+            albumNameForRefresh = (track as any).Album;
+          } else {
+            const storedTrack = (await localDb.getTrackById(trackId)) as any;
+            if (storedTrack) {
+              albumIdForRefresh = storedTrack.AlbumId;
+              albumNameForRefresh = storedTrack.Album;
+            }
+          }
+          if (albumIdForRefresh) {
+            await localDb.refreshAlbumDownloadFlag(
+              albumIdForRefresh,
+              albumNameForRefresh
+            );
+          }
+        } catch (e) {
+          logger.warn("Refreshing album download state failed", e);
+        }
+      }
       try {
-        window.dispatchEvent(new Event("downloadsUpdate"));
+        window.dispatchEvent(
+          new CustomEvent("trackDownloadStatusChanged", {
+            detail: { trackId, downloaded: true },
+          })
+        );
       } catch {}
+      if (!suppressEvent) {
+        // Notify UI (optional for bulk operations)
+        try {
+          window.dispatchEvent(new Event("downloadsUpdate"));
+        } catch {}
+      }
       // Return the custom protocol URL used by the app to load local files
       return `media:///${encodeURI(rel)}`;
     }
@@ -119,6 +288,15 @@ export async function downloadTrack(params: {
 export async function removeDownload(trackId: string): Promise<boolean> {
   try {
     await localDb.initialize();
+    let albumIdForRefresh: string | undefined;
+    let albumNameForRefresh: string | undefined;
+    try {
+      const storedTrack = (await localDb.getTrackById(trackId)) as any;
+      if (storedTrack) {
+        albumIdForRefresh = storedTrack.AlbumId;
+        albumNameForRefresh = storedTrack.Album;
+      }
+    } catch {}
     const entry = await localDb.getDownload(trackId);
     if (!entry) return true;
     if ((window as any).electronAPI?.mediaDelete) {
@@ -127,6 +305,23 @@ export async function removeDownload(trackId: string): Promise<boolean> {
     await localDb.removeDownload(trackId);
     try {
       await localDb.unmarkTracksCached([trackId]);
+    } catch {}
+    if (albumIdForRefresh) {
+      try {
+        await localDb.refreshAlbumDownloadFlag(
+          albumIdForRefresh,
+          albumNameForRefresh
+        );
+      } catch (e) {
+        logger.warn("Refreshing album download state failed", e);
+      }
+    }
+    try {
+      window.dispatchEvent(
+        new CustomEvent("trackDownloadStatusChanged", {
+          detail: { trackId, downloaded: false },
+        })
+      );
     } catch {}
     try {
       window.dispatchEvent(new Event("downloadsUpdate"));
@@ -178,6 +373,9 @@ export async function downloadAlbumById(
         url,
         container: ms?.Container,
         bitrate: ms?.Bitrate,
+        track: t as any,
+        skipMetadata: true,
+        suppressEvent: true,
       });
       trackIds.push(t.Id);
       downloaded++;
@@ -193,11 +391,24 @@ export async function downloadAlbumById(
       auth.accessToken,
       albumId
     );
-    if (album) await localDb.saveAlbums([album as any]);
+    if (album) {
+      await localDb.saveAlbums([album as any]);
+      await ensurePrimaryImageCached({
+        itemId: String(album.Id || albumId),
+        type: "album",
+        serverAddress: auth.serverAddress,
+        accessToken: auth.accessToken,
+        imageTag:
+          (album as any)?.ImageTags?.Primary ??
+          (album as any)?.PrimaryImageTag ??
+          null,
+        displayName: (album as any)?.Name ?? name,
+      });
+    }
   } catch (e) {
     logger.warn("Saving album info after download failed", e);
   }
-  await localDb.markCollectionDownloaded(albumId, "album", name);
+  await localDb.refreshAlbumDownloadFlag(albumId, name);
   try {
     await localDb.markTracksCached(trackIds);
     await localDb.markAlbumsCached([albumId]);
@@ -220,6 +431,7 @@ export async function downloadPlaylistById(
   let downloaded = 0;
   let failed = 0;
   const trackIds: string[] = [];
+  const touchedAlbumIds = new Set<string>();
   // Save track metadata locally for playlist items
   try {
     await localDb.initialize();
@@ -237,8 +449,14 @@ export async function downloadPlaylistById(
         url,
         container: ms?.Container,
         bitrate: ms?.Bitrate,
+        track: t as any,
+        skipMetadata: true,
+        suppressEvent: true,
       });
       trackIds.push(t.Id);
+      if (t.AlbumId) {
+        touchedAlbumIds.add(t.AlbumId);
+      }
       downloaded++;
     } catch {
       failed++;
@@ -246,7 +464,34 @@ export async function downloadPlaylistById(
   }
   await localDb.markCollectionDownloaded(playlistId, "playlist", name);
   try {
+    const { getPlaylistInfo } = await import("@/lib/jellyfin");
+    const playlist = await getPlaylistInfo(playlistId);
+    if (playlist) {
+      await localDb.savePlaylists([playlist as any]);
+      await ensurePrimaryImageCached({
+        itemId: String(playlist.Id || playlistId),
+        type: "playlist",
+        serverAddress: auth.serverAddress,
+        accessToken: auth.accessToken,
+        imageTag:
+          (playlist as any)?.ImageTags?.Primary ??
+          (playlist as any)?.PrimaryImageTag ??
+          null,
+        displayName: (playlist as any)?.Name ?? name,
+      });
+    }
+  } catch (e) {
+    logger.warn("Saving playlist info after download failed", e);
+  }
+  try {
     await localDb.markTracksCached(trackIds);
+    for (const albumId of touchedAlbumIds) {
+      try {
+        await localDb.refreshAlbumDownloadFlag(albumId);
+      } catch (e) {
+        logger.warn("Refreshing album download state failed", e);
+      }
+    }
   } catch {}
   try {
     window.dispatchEvent(new Event("downloadsUpdate"));
@@ -318,6 +563,9 @@ export async function downloadFavourites(
         url,
         container: ms?.Container,
         bitrate: ms?.Bitrate,
+        track: t as any,
+        skipMetadata: true,
+        suppressEvent: true,
       });
       trackIds.push(t.Id);
       downloaded++;
