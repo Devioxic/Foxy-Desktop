@@ -41,6 +41,7 @@ interface Track extends BaseItemDto {
   Artists?: string[];
   ProductionYear?: number;
   ParentIndexNumber?: number;
+  LocalImages?: { Primary?: string };
 }
 
 const FavouritePlaylistView = () => {
@@ -145,6 +146,7 @@ const FavouritePlaylistView = () => {
     AlbumArtist: track.AlbumArtist,
     Album: track.Album,
     ImageTags: track.ImageTags,
+    LocalImages: (track as any)?.LocalImages,
     RunTimeTicks: track.RunTimeTicks,
     MediaSources:
       track.MediaSources?.map((source) => ({

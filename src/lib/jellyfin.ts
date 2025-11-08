@@ -822,6 +822,52 @@ export const getItemsByIds = async (
   }
 };
 
+export const getItemsUserDataMap = async (
+  ids: string[]
+): Promise<Record<string, boolean>> => {
+  const result: Record<string, boolean> = {};
+  if (!ids.length) return result;
+
+  try {
+    const authData = JSON.parse(localStorage.getItem("authData") || "{}");
+    if (!authData.serverAddress || !authData.accessToken || !authData.userId) {
+      throw new Error("No authentication data found");
+    }
+
+    const api = jellyfin.createApi(
+      authData.serverAddress,
+      authData.accessToken
+    );
+    const itemsApi = getItemsApi(api);
+
+    const chunkSize = 50;
+    for (let i = 0; i < ids.length; i += chunkSize) {
+      const chunk = ids.slice(i, i + chunkSize);
+      try {
+        const response = await (itemsApi.getItems as any)({
+          userId: authData.userId,
+          ids: chunk,
+          enableUserData: true,
+          enableTotalRecordCount: false,
+        });
+
+        const items = (response?.data?.Items || []) as any[];
+        for (const item of items) {
+          if (item?.Id) {
+            result[item.Id] = Boolean(item?.UserData?.IsFavorite);
+          }
+        }
+      } catch (error) {
+        logger.warn("Failed to fetch user data chunk", error);
+      }
+    }
+  } catch (error) {
+    logger.warn("Failed to fetch user data map", error);
+  }
+
+  return result;
+};
+
 // Enhanced search function that searches multiple categories
 export const searchAllItems = async (searchTerm: string) => {
   try {

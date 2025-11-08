@@ -10,6 +10,7 @@ import {
   Search,
   Download,
 } from "lucide-react";
+import { useOfflineModeContext } from "@/contexts/OfflineModeContext";
 
 interface SidebarProps {
   activeSection?: string;
@@ -20,6 +21,7 @@ const Sidebar: React.FC<SidebarProps> = React.memo(
   ({ activeSection, onSectionChange }) => {
     const navigate = useNavigate();
     const location = useLocation();
+    const { isOffline } = useOfflineModeContext();
 
     // Determine active section from URL if not provided
     const currentActiveSection = useMemo(() => {
@@ -72,29 +74,33 @@ const Sidebar: React.FC<SidebarProps> = React.memo(
 
     return (
       <div className="fixed left-0 top-0 w-64 h-full bg-card border-r border-border z-40 flex flex-col">
-        <div className="p-6 flex-1 overflow-y-auto">
+        <div className="p-6 flex-1 overflow-y-auto overflow-x-hidden">
           {/* Logo and Branding */}
-          <div className="flex items-center space-x-3 mb-8">
+          <div className="flex items-center gap-3 mb-8">
             <img src="./Foxy.svg" alt="Foxy" className="w-8 h-8" />
             <h1 className="text-xl font-bold text-card-foreground">Foxy</h1>
           </div>
 
           {/* Navigation */}
           <nav className="space-y-2">
-            {navigationItems.map((item) => (
-              <button
-                key={item.id}
-                onClick={() => handleSectionClick(item.id)}
-                className={`w-full flex items-center space-x-3 px-3 py-2 rounded-lg text-left transition-colors ${
-                  currentActiveSection === item.id
-                    ? "bg-primary/10 text-primary"
-                    : "text-card-foreground hover:bg-accent hover:text-accent-foreground"
-                }`}
-              >
-                <item.icon className="w-5 h-5" />
-                <span className="font-medium">{item.label}</span>
-              </button>
-            ))}
+            {navigationItems.map((item) => {
+              const disabled = isOffline && item.id !== "downloads";
+              return (
+                <button
+                  key={item.id}
+                  onClick={() => handleSectionClick(item.id)}
+                  disabled={disabled}
+                  className={`w-full flex items-center space-x-3 px-3 py-2 rounded-lg text-left transition-colors ${
+                    currentActiveSection === item.id
+                      ? "bg-primary/10 text-primary"
+                      : "text-card-foreground hover:bg-accent hover:text-accent-foreground"
+                  } ${disabled ? "opacity-60 cursor-not-allowed" : ""}`}
+                >
+                  <item.icon className="w-5 h-5" />
+                  <span className="font-medium">{item.label}</span>
+                </button>
+              );
+            })}
           </nav>
         </div>
 

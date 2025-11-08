@@ -8,6 +8,7 @@ import {
   getAlbumInfo,
   getArtistInfo,
   getPlaylistItems,
+  getPlaylistInfo,
 } from "./jellyfin";
 import { BaseItemDto } from "@jellyfin/sdk/lib/generated-client/models";
 import { logger } from "./logger";
@@ -421,6 +422,10 @@ class SyncService {
           try {
             const items = await getPlaylistItems(playlist.Id);
             const normalized = (items || []).filter((item) => item?.Id);
+            const totalTicks = normalized.reduce(
+              (acc, item) => acc + (item.RunTimeTicks || 0),
+              0
+            );
             const entries = normalized.map((item, index) => {
               const playlistItemId =
                 ((item as any).PlaylistItemId as string | undefined) ||
@@ -432,6 +437,11 @@ class SyncService {
               };
             });
             await localDb.replacePlaylistItems(playlist.Id, entries);
+            await localDb.updatePlaylistStats(
+              playlist.Id,
+              normalized.length,
+              totalTicks
+            );
 
             const audioTracks = normalized.filter(
               (item) => item.Type === "Audio" && item.Id
@@ -450,6 +460,7 @@ class SyncService {
             );
             try {
               await localDb.replacePlaylistItems(playlist.Id, []);
+              await localDb.updatePlaylistStats(playlist.Id, 0, 0);
             } catch (dbError) {
               logger.warn("Failed to clear cached playlist items", dbError);
             }
@@ -482,6 +493,8 @@ class SyncService {
 // Helper functions for hybrid online/offline access
 export class HybridDataService {
   private useLocalFirst: boolean = true;
+  private offlineModeActive: boolean = false;
+  private previousUseLocalFirst: boolean | null = null;
 
   constructor(useLocalFirst: boolean = true) {
     this.useLocalFirst = useLocalFirst;
@@ -489,6 +502,33 @@ export class HybridDataService {
 
   setUseLocalFirst(useLocal: boolean) {
     this.useLocalFirst = useLocal;
+  }
+
+  setOfflineModeActive(active: boolean) {
+    this.offlineModeActive = active;
+    if (active) {
+      // When offline we always prioritise local data regardless of preference
+      if (this.previousUseLocalFirst === null) {
+        this.previousUseLocalFirst = this.useLocalFirst;
+      }
+      this.useLocalFirst = true;
+    } else {
+      if (this.previousUseLocalFirst !== null) {
+        this.useLocalFirst = this.previousUseLocalFirst;
+        this.previousUseLocalFirst = null;
+        return;
+      }
+      try {
+        const stored = localStorage.getItem("useLocalFirst");
+        if (stored !== null) {
+          this.useLocalFirst = stored === "true";
+        }
+      } catch {}
+    }
+  }
+
+  isOfflineModeActive() {
+    return this.offlineModeActive;
   }
 
   private async shouldWaitForSync(): Promise<boolean> {
@@ -523,7 +563,9 @@ export class HybridDataService {
     forceOnline: boolean = false,
     onlyWithAlbums: boolean = false
   ): Promise<BaseItemDto[]> {
-    if (!forceOnline && this.useLocalFirst) {
+    const preferLocal =
+      !forceOnline && (this.useLocalFirst || this.offlineModeActive);
+    if (preferLocal) {
       try {
         await localDb.initialize();
         let localArtists: BaseItemDto[] = [];
@@ -545,7 +587,7 @@ export class HybridDataService {
           }
         }
 
-        if (localArtists.length > 0) {
+        if (localArtists.length > 0 || this.offlineModeActive) {
           return localArtists;
         }
       } catch (error) {
@@ -571,7 +613,9 @@ export class HybridDataService {
     id: string,
     forceOnline: boolean = false
   ): Promise<BaseItemDto | null> {
-    if (!forceOnline && this.useLocalFirst) {
+    const preferLocal =
+      !forceOnline && (this.useLocalFirst || this.offlineModeActive);
+    if (preferLocal) {
       try {
         await localDb.initialize();
         const localArtist = await localDb.getArtistById(id);
@@ -584,6 +628,10 @@ export class HybridDataService {
           error
         );
       }
+    }
+
+    if (this.offlineModeActive) {
+      return null;
     }
 
     // Fall back to server
@@ -601,7 +649,9 @@ export class HybridDataService {
     offset?: number,
     forceOnline: boolean = false
   ): Promise<BaseItemDto[]> {
-    if (!forceOnline && this.useLocalFirst) {
+    const preferLocal =
+      !forceOnline && (this.useLocalFirst || this.offlineModeActive);
+    if (preferLocal) {
       try {
         await localDb.initialize();
         let localAlbums = await localDb.getAlbums(limit, offset);
@@ -614,7 +664,7 @@ export class HybridDataService {
           localAlbums = await localDb.getAlbums(limit, offset);
         }
 
-        if (localAlbums.length > 0) {
+        if (localAlbums.length > 0 || this.offlineModeActive) {
           return localAlbums;
         }
       } catch (error) {
@@ -623,6 +673,10 @@ export class HybridDataService {
           error
         );
       }
+    }
+
+    if (this.offlineModeActive) {
+      return [];
     }
 
     // Fall back to server
@@ -636,7 +690,9 @@ export class HybridDataService {
     forceOnline: boolean = false
   ): Promise<BaseItemDto | null> {
     // Optionally try local first
-    if (!forceOnline && this.useLocalFirst) {
+    const preferLocal =
+      !forceOnline && (this.useLocalFirst || this.offlineModeActive);
+    if (preferLocal) {
       try {
         await localDb.initialize();
         const localAlbum = await localDb.getAlbumById(id);
@@ -644,6 +700,10 @@ export class HybridDataService {
       } catch (error) {
         logger.warn("Local album lookup failed", error);
       }
+    }
+
+    if (this.offlineModeActive) {
+      return null;
     }
 
     // Try server
@@ -679,14 +739,21 @@ export class HybridDataService {
     forceOnline: boolean = false
   ): Promise<BaseItemDto[]> {
     // Optionally try local first
-    if (!forceOnline && this.useLocalFirst) {
+    const preferLocal =
+      !forceOnline && (this.useLocalFirst || this.offlineModeActive);
+    if (preferLocal) {
       try {
         await localDb.initialize();
         const localTracks = await localDb.getTracksByAlbumId(albumId);
-        if (localTracks.length > 0) return localTracks;
+        if (localTracks.length > 0 || this.offlineModeActive)
+          return localTracks;
       } catch (error) {
         logger.warn("Local album tracks lookup failed", error);
       }
+    }
+
+    if (this.offlineModeActive) {
+      return [];
     }
 
     // Try server
@@ -722,11 +789,13 @@ export class HybridDataService {
     artistId: string,
     forceOnline: boolean = false
   ): Promise<BaseItemDto[]> {
-    if (!forceOnline && this.useLocalFirst) {
+    const preferLocal =
+      !forceOnline && (this.useLocalFirst || this.offlineModeActive);
+    if (preferLocal) {
       try {
         await localDb.initialize();
         const localAlbums = await localDb.getAlbumsByArtistId(artistId);
-        if (localAlbums.length > 0) {
+        if (localAlbums.length > 0 || this.offlineModeActive) {
           return localAlbums;
         }
       } catch (error) {
@@ -735,6 +804,10 @@ export class HybridDataService {
           error
         );
       }
+    }
+
+    if (this.offlineModeActive) {
+      return [];
     }
 
     // Fall back to server
@@ -752,11 +825,13 @@ export class HybridDataService {
     artistId: string,
     forceOnline: boolean = false
   ): Promise<BaseItemDto[]> {
-    if (!forceOnline && this.useLocalFirst) {
+    const preferLocal =
+      !forceOnline && (this.useLocalFirst || this.offlineModeActive);
+    if (preferLocal) {
       try {
         await localDb.initialize();
         const localTracks = await localDb.getTracksByArtistId(artistId);
-        if (localTracks.length > 0) {
+        if (localTracks.length > 0 || this.offlineModeActive) {
           return localTracks;
         }
       } catch (error) {
@@ -767,18 +842,24 @@ export class HybridDataService {
       }
     }
 
+    if (this.offlineModeActive) {
+      return [];
+    }
+
     // Fall back to server
 
     return await getArtistTracks(artistId);
   }
 
   async getPlaylists(forceOnline: boolean = false): Promise<BaseItemDto[]> {
-    if (!forceOnline && this.useLocalFirst) {
+    const preferLocal =
+      !forceOnline && (this.useLocalFirst || this.offlineModeActive);
+    if (preferLocal) {
       try {
         await localDb.initialize();
         const localPlaylists = await localDb.getPlaylists();
-        if (localPlaylists.length > 0) {
-          logger.info(
+        if (localPlaylists.length > 0 || this.offlineModeActive) {
+          logger.debug(
             `Retrieved ${localPlaylists.length} playlists from local database`
           );
           return localPlaylists;
@@ -791,20 +872,107 @@ export class HybridDataService {
       }
     }
 
+    if (this.offlineModeActive) {
+      return [];
+    }
+
     // Fall back to server
 
     return await getAllPlaylists();
+  }
+
+  async getPlaylistById(
+    id: string,
+    forceOnline: boolean = false
+  ): Promise<BaseItemDto | null> {
+    const preferLocal =
+      !forceOnline && (this.useLocalFirst || this.offlineModeActive);
+    if (preferLocal) {
+      try {
+        await localDb.initialize();
+        const localPlaylist = await localDb.getPlaylistById(id);
+        if (localPlaylist) {
+          return localPlaylist;
+        }
+      } catch (error) {
+        logger.warn(
+          "Failed to get playlist from local database, falling back to server:",
+          error
+        );
+      }
+    }
+
+    if (this.offlineModeActive) {
+      return null;
+    }
+
+    try {
+      return await getPlaylistInfo(id);
+    } catch (error) {
+      logger.warn("Failed to fetch playlist from server:", error);
+    }
+
+    try {
+      await localDb.initialize();
+      return await localDb.getPlaylistById(id);
+    } catch (error) {
+      logger.warn("Final local playlist lookup failed", error);
+      return null;
+    }
+  }
+
+  async getPlaylistTracks(
+    playlistId: string,
+    forceOnline: boolean = false
+  ): Promise<BaseItemDto[]> {
+    const preferLocal =
+      !forceOnline && (this.useLocalFirst || this.offlineModeActive);
+    if (preferLocal) {
+      try {
+        await localDb.initialize();
+        const localTracks = await localDb.getPlaylistTracks(playlistId);
+        if (localTracks.length > 0 || this.offlineModeActive) {
+          return localTracks;
+        }
+      } catch (error) {
+        logger.warn(
+          "Failed to get playlist tracks from local database, falling back to server:",
+          error
+        );
+      }
+    }
+
+    if (this.offlineModeActive) {
+      return [];
+    }
+
+    try {
+      const tracks = await getPlaylistItems(playlistId);
+      return tracks || [];
+    } catch (error) {
+      logger.warn("Failed to fetch playlist tracks from server:", error);
+    }
+
+    try {
+      await localDb.initialize();
+      return await localDb.getPlaylistTracks(playlistId);
+    } catch (error) {
+      logger.warn("Final local playlist tracks lookup failed", error);
+      return [];
+    }
   }
 
   async searchArtists(
     query: string,
     forceOnline: boolean = false
   ): Promise<BaseItemDto[]> {
-    if (!forceOnline && this.useLocalFirst) {
+    const preferLocal =
+      !forceOnline && (this.useLocalFirst || this.offlineModeActive);
+    if (preferLocal) {
       try {
         await localDb.initialize();
         const localResults = await localDb.searchArtists(query);
-        if (localResults.length > 0) {
+        if (localResults.length > 0 || this.offlineModeActive) {
           logger.info(
             `Found ${localResults.length} artists matching "${query}" in local database`
           );
@@ -816,6 +984,10 @@ export class HybridDataService {
           error
         );
       }
+    }
+
+    if (this.offlineModeActive) {
+      return [];
     }
 
     // Fall back to server search (would need to implement server search)

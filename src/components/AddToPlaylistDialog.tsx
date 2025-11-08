@@ -20,7 +20,11 @@ import {
   checkIsFavorite,
   removeItemsFromPlaylist,
 } from "@/lib/jellyfin";
-import { isCollectionDownloaded, downloadTrack } from "@/lib/downloads";
+import {
+  isCollectionDownloaded,
+  downloadTrack,
+  resolveDownloadRequest,
+} from "@/lib/downloads";
 import { localDb } from "@/lib/database";
 import { hybridData } from "@/lib/sync";
 import { logger } from "@/lib/logger";
@@ -28,6 +32,7 @@ import { ListMusic, Loader2, Heart, Circle, CircleDot } from "lucide-react";
 import { BaseItemDto } from "@jellyfin/sdk/lib/generated-client/models";
 import BlurHashImage from "@/components/BlurHashImage";
 import { APP_EVENTS, FavoriteStateChangedDetail } from "@/constants/events";
+import { resolvePrimaryImageUrl } from "@/utils/media";
 
 interface AddToPlaylistDialogProps {
   open: boolean;
@@ -91,13 +96,16 @@ export default function AddToPlaylistDialog({
   // Get auth data from localStorage
   const authData = JSON.parse(localStorage.getItem("authData") || "{}");
   const serverAddress = authData.serverAddress || "";
+  const accessToken = authData.accessToken || undefined;
 
   // Helper function to get playlist image
   const getPlaylistImage = (playlist: BaseItemDto, size: number = 150) => {
-    if (playlist.ImageTags?.Primary && serverAddress && playlist.Id) {
-      return `${serverAddress}/Items/${playlist.Id}/Images/Primary?maxWidth=${size}&quality=90`;
-    }
-    return null;
+    return resolvePrimaryImageUrl({
+      item: playlist as any,
+      serverAddress,
+      accessToken,
+      size,
+    });
   };
 
   // Helper function to get playlist blur hash
@@ -126,6 +134,10 @@ export default function AddToPlaylistDialog({
           try {
             const items = await getPlaylistItems(playlist.Id);
             const normalized = (items || []).filter((item) => item?.Id);
+            const totalTicks = normalized.reduce(
+              (acc, item) => acc + (item.RunTimeTicks || 0),
+              0
+            );
             const entries = normalized.map((item, index) => ({
               playlistItemId:
                 ((item as any).PlaylistItemId as string | undefined) ||
@@ -134,6 +146,11 @@ export default function AddToPlaylistDialog({
               sortIndex: index,
             }));
             await localDb.replacePlaylistItems(playlist.Id, entries);
+            await localDb.updatePlaylistStats(
+              playlist.Id,
+              normalized.length,
+              totalTicks
+            );
             const audioTracks = normalized.filter(
               (item) => item.Type === "Audio" && item.Id
             );
@@ -215,6 +232,10 @@ export default function AddToPlaylistDialog({
                   }
 
                   const normalized = (items || []).filter((item) => item?.Id);
+                  const totalTicks = normalized.reduce(
+                    (acc, item) => acc + (item.RunTimeTicks || 0),
+                    0
+                  );
                   const entries = normalized.map((item, index) => ({
                     playlistItemId:
                       ((item as any).PlaylistItemId as string | undefined) ||
@@ -223,6 +244,11 @@ export default function AddToPlaylistDialog({
                     sortIndex: index,
                   }));
                   await localDb.replacePlaylistItems(pl.Id, entries);
+                  await localDb.updatePlaylistStats(
+                    pl.Id,
+                    normalized.length,
+                    totalTicks
+                  );
 
                   const audioTracks = normalized.filter(
                     (item) => item.Type === "Audio" && item.Id
@@ -369,8 +395,20 @@ export default function AddToPlaylistDialog({
                 const auth = JSON.parse(
                   localStorage.getItem("authData") || "{}"
                 );
-                const url = `${auth.serverAddress}/Audio/${trackId}/stream?static=true&api_key=${auth.accessToken}`;
-                await downloadTrack({ trackId, name: trackName, url });
+                const request = resolveDownloadRequest(trackId, {
+                  serverAddress: auth?.serverAddress,
+                  accessToken: auth?.accessToken,
+                  userId: auth?.userId,
+                });
+                if (request.url) {
+                  await downloadTrack({
+                    trackId,
+                    name: trackName,
+                    url: request.url,
+                    container: request.container ?? undefined,
+                    bitrate: request.bitrate ?? undefined,
+                  });
+                }
               }
             } catch {}
             // Update local counts optimistically
@@ -468,6 +506,19 @@ export default function AddToPlaylistDialog({
               );
             }
           }
+        }
+      }
+      if (playlistsToRefresh.size > 0) {
+        try {
+          playlistsToRefresh.forEach((pid) => {
+            window.dispatchEvent(
+              new CustomEvent("playlistItemsUpdated", {
+                detail: { playlistId: pid },
+              })
+            );
+          });
+        } catch (error) {
+          logger.warn("Failed to broadcast playlist updates", error);
         }
       }
       onOpenChange(false);

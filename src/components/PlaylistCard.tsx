@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { Card, CardContent } from "@/components/ui/card";
 import { ListMusic } from "lucide-react";
 import BlurHashImage from "@/components/BlurHashImage";
+import { resolvePrimaryImageUrl } from "@/utils/media";
 
 interface PlaylistCardProps {
   item: {
@@ -16,6 +17,7 @@ interface PlaylistCardProps {
   };
   authData: {
     serverAddress?: string;
+    accessToken?: string;
   };
   // Optional query string to append when navigating (e.g., "q=term")
   appendQuery?: string;
@@ -29,10 +31,12 @@ const PlaylistCard: React.FC<PlaylistCardProps> = ({
   const navigate = useNavigate();
 
   const getPlaylistArt = (size: number = 400) => {
-    if (item.ImageTags?.Primary && authData.serverAddress && item.Id) {
-      return `${authData.serverAddress}/Items/${item.Id}/Images/Primary?maxWidth=${size}&quality=90`;
-    }
-    return null;
+    return resolvePrimaryImageUrl({
+      item: item as any,
+      serverAddress: authData.serverAddress,
+      accessToken: authData.accessToken || undefined,
+      size,
+    });
   };
 
   const getPlaylistBlurHash = () => {
@@ -50,14 +54,16 @@ const PlaylistCard: React.FC<PlaylistCardProps> = ({
     }
   };
 
+  const playlistArt = getPlaylistArt();
+
   return (
     <div className="cursor-pointer group w-48" onClick={handleCardClick}>
       <Card className="overflow-hidden shadow-sm hover:shadow-md transition-shadow w-full">
         <CardContent className="p-0">
           <div className="aspect-square bg-muted">
-            {getPlaylistArt() ? (
+            {playlistArt ? (
               <BlurHashImage
-                src={getPlaylistArt()!}
+                src={playlistArt}
                 blurHash={getPlaylistBlurHash()}
                 alt={item.Name || "Playlist"}
                 className="w-full h-full"

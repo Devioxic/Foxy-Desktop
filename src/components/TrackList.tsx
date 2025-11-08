@@ -18,6 +18,7 @@ import {
   downloadTrack,
   removeDownload,
   getLocalUrlForTrack,
+  resolveDownloadRequest,
 } from "@/lib/downloads";
 import { useNavigate } from "react-router-dom";
 
@@ -30,6 +31,7 @@ interface Track {
   Album?: string;
   IndexNumber?: number;
   ImageTags?: { Primary?: string };
+  LocalImages?: { Primary?: string };
   AlbumArtist?: string;
   Artist?: string;
   MediaSources?: any[];
@@ -58,6 +60,8 @@ interface TrackListProps {
   assumeAllDownloaded?: boolean;
   // If present, enables per-track removal from that playlist
   playlistId?: string;
+  // When true, disable actions that require the server
+  isOffline?: boolean;
 }
 
 const TrackList: React.FC<TrackListProps> = React.memo(
@@ -81,6 +85,7 @@ const TrackList: React.FC<TrackListProps> = React.memo(
     usePlaylistIndex = false,
     assumeAllDownloaded = false,
     playlistId,
+    isOffline = false,
   }) => {
     const navigate = useNavigate();
     const { queue, playNow, addToQueue, addToQueueNext } = useMusicPlayer();
@@ -98,6 +103,7 @@ const TrackList: React.FC<TrackListProps> = React.memo(
       {}
     );
     const [dlLoading, setDlLoading] = useState<Record<string, boolean>>({});
+    const trackIdsRef = useRef<Set<string>>(new Set());
 
     const isCurrentTrack = (trackId?: string) =>
       trackId && currentTrack?.Id === trackId;
@@ -118,6 +124,7 @@ const TrackList: React.FC<TrackListProps> = React.memo(
       Artists: track.Artists,
       RunTimeTicks: track.RunTimeTicks,
       ImageTags: track.ImageTags,
+      LocalImages: (track as any)?.LocalImages,
       MediaSources: track.MediaSources || [],
     });
 
@@ -129,6 +136,11 @@ const TrackList: React.FC<TrackListProps> = React.memo(
 
     // Download state handling
     const lastIdSignatureRef = useRef<string | null>(null);
+    useEffect(() => {
+      trackIdsRef.current = new Set(
+        tracks.map((t) => t.Id).filter(Boolean) as string[]
+      );
+    }, [tracks]);
     useEffect(() => {
       const idSignature = tracks.map((t) => t.Id).join(",");
       if (idSignature === lastIdSignatureRef.current) return;
@@ -168,6 +180,34 @@ const TrackList: React.FC<TrackListProps> = React.memo(
         cancelled = true;
       };
     }, [tracks, assumeAllDownloaded]);
+
+    useEffect(() => {
+      const handler = (event: Event) => {
+        const detail = (
+          event as CustomEvent<{ trackId?: string; downloaded?: boolean }>
+        ).detail;
+        if (!detail?.trackId) return;
+        if (!trackIdsRef.current.has(detail.trackId)) return;
+        setDownloadedMap((prev) => {
+          const current = prev[detail.trackId];
+          if (current === detail.downloaded) return prev;
+          return {
+            ...prev,
+            [detail.trackId!]: Boolean(detail.downloaded),
+          };
+        });
+      };
+      window.addEventListener(
+        "trackDownloadStatusChanged",
+        handler as EventListener
+      );
+      return () => {
+        window.removeEventListener(
+          "trackDownloadStatusChanged",
+          handler as EventListener
+        );
+      };
+    }, []);
 
     return (
       <>
@@ -260,7 +300,7 @@ const TrackList: React.FC<TrackListProps> = React.memo(
                 onClick={(e) => e.stopPropagation()}
                 onMouseDown={(e) => e.stopPropagation()}
               >
-                {track.Id && track.Name && (
+                {track.Id && track.Name && !isOffline && (
                   <Button
                     variant="ghost"
                     size="sm"
@@ -316,11 +356,11 @@ const TrackList: React.FC<TrackListProps> = React.memo(
                             />
                           ),
                           onSelect: () => onToggleTrackFavorite(track.Id!),
-                          disabled: !!favoriteLoading[track.Id],
+                          disabled: isOffline || !!favoriteLoading[track.Id],
                         });
                       }
                       // Add to playlist
-                      if (track.Id && track.Name) {
+                      if (track.Id && track.Name && !isOffline) {
                         actions.push({
                           id: "add-to-playlist",
                           label: "Add to playlist",
@@ -348,6 +388,7 @@ const TrackList: React.FC<TrackListProps> = React.memo(
                             />
                           ),
                           onSelect: async () => {
+                            if (isOffline && !downloadedMap[track.Id]) return;
                             if (!track.Id) return;
                             setDlLoading((m) => ({ ...m, [track.Id!]: true }));
                             try {
@@ -362,34 +403,24 @@ const TrackList: React.FC<TrackListProps> = React.memo(
                                 }));
                               } else {
                                 const ms = (track as any).MediaSources?.[0];
-                                let url: string | undefined =
-                                  ms?.DirectStreamUrl || ms?.TranscodingUrl;
-                                try {
-                                  const auth = JSON.parse(
-                                    localStorage.getItem("authData") || "{}"
-                                  );
-                                  const server = auth?.serverAddress;
-                                  const token = auth?.accessToken;
-                                  if (!url) {
-                                    if (server && token) {
-                                      url = `${server}/Audio/${track.Id}/stream?static=true&api_key=${token}`;
-                                    }
-                                  } else if (
-                                    url &&
-                                    server &&
-                                    token &&
-                                    url.startsWith("/")
-                                  ) {
-                                    url = `${server}${url}${url.includes("?") ? `&api_key=${token}` : `?api_key=${token}`}`;
+                                const request = resolveDownloadRequest(
+                                  track.Id!,
+                                  {
+                                    mediaSource: ms,
                                   }
-                                } catch {}
-                                if (!url) return;
+                                );
+                                if (!request.url) return;
                                 await downloadTrack({
                                   trackId: track.Id,
                                   name: track.Name,
-                                  url,
-                                  container: ms?.Container,
-                                  bitrate: ms?.Bitrate,
+                                  url: request.url,
+                                  container:
+                                    request.container ??
+                                    ms?.Container ??
+                                    undefined,
+                                  bitrate:
+                                    request.bitrate ?? ms?.Bitrate ?? undefined,
+                                  track: track as any,
                                 });
                                 setDownloadedMap((m) => ({
                                   ...m,
@@ -408,7 +439,9 @@ const TrackList: React.FC<TrackListProps> = React.memo(
                               } catch {}
                             }
                           },
-                          disabled: !!dlLoading[track.Id],
+                          disabled:
+                            !!dlLoading[track.Id] ||
+                            (isOffline && !downloadedMap[track.Id]),
                         });
                       }
                       // Add to queue

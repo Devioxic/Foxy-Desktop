@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { Card, CardContent } from "@/components/ui/card";
 import { Music } from "lucide-react";
 import BlurHashImage from "@/components/BlurHashImage";
+import { resolvePrimaryImageUrl } from "@/utils/media";
 
 interface AlbumCardProps {
   item: {
@@ -20,6 +21,7 @@ interface AlbumCardProps {
   };
   authData: {
     serverAddress?: string;
+    accessToken?: string;
   };
   appendQuery?: string;
   showYear?: boolean; // new prop
@@ -34,11 +36,14 @@ const AlbumCard: React.FC<AlbumCardProps> = ({
   const navigate = useNavigate();
 
   const getAlbumArt = (size: number = 400) => {
-    const itemId = item.AlbumId || item.Id;
-    if (item.ImageTags?.Primary && authData.serverAddress && itemId) {
-      return `${authData.serverAddress}/Items/${itemId}/Images/Primary?maxWidth=${size}&quality=90`;
-    }
-    return null;
+    const sourceId = item.AlbumId || item.Id;
+    return resolvePrimaryImageUrl({
+      item: item as any,
+      serverAddress: authData.serverAddress,
+      accessToken: authData.accessToken || undefined,
+      size,
+      fallbackId: sourceId,
+    });
   };
 
   const getAlbumBlurHash = () => {
@@ -70,14 +75,16 @@ const AlbumCard: React.FC<AlbumCardProps> = ({
       : ""
     : artistText;
 
+  const albumArt = getAlbumArt();
+
   return (
     <div className="cursor-pointer group w-48" onClick={handleCardClick}>
       <Card className="overflow-hidden shadow-sm hover:shadow-md transition-shadow w-full">
         <CardContent className="p-0">
           <div className="aspect-square bg-muted">
-            {getAlbumArt() ? (
+            {albumArt ? (
               <BlurHashImage
-                src={getAlbumArt()!}
+                src={albumArt}
                 blurHash={getAlbumBlurHash()}
                 alt={item.Name || "Album"}
                 className="w-full h-full"

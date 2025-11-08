@@ -311,7 +311,7 @@ export default function SyncManager({ onSyncComplete }: SyncManagerProps) {
           <CardTitle className="text-base">Sync Operations</CardTitle>
           <CardDescription>
             Keep your local music library synchronized with the Jellyfin server
-            for faster performance and offline access.
+            for faster performance.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -385,7 +385,6 @@ export default function SyncManager({ onSyncComplete }: SyncManagerProps) {
             changes
           </div>
           <div>• Sync runs automatically in the background when needed</div>
-          <div>• Your music will work offline after the first sync</div>
         </CardContent>
       </Card>
     </div>

@@ -2,58 +2,68 @@ import React, { useEffect, useState } from "react";
 import Sidebar from "@/components/Sidebar";
 import MusicPlayer from "@/components/MusicPlayer";
 import { localDb } from "@/lib/database";
-import { useNavigate } from "react-router-dom";
 import AlbumCard from "@/components/AlbumCard";
 import PlaylistCard from "@/components/PlaylistCard";
 import { useAuthData } from "@/hooks/useAuthData";
+import type { BaseItemDto } from "@jellyfin/sdk/lib/generated-client/models";
 
-interface DownloadRow {
-  track_id: string;
-  file_rel_path: string;
-  container?: string;
-  bitrate?: number;
-  size_bytes?: number;
-}
+type DownloadedAlbum = BaseItemDto & { DownloadedTrackCount?: number };
 
 const Downloads: React.FC = () => {
-  const [rows, setRows] = useState<DownloadRow[]>([]);
-  const [collections, setCollections] = useState<
-    Array<{ id: string; type: string; name?: string }>
-  >([]);
-  const [albumItems, setAlbumItems] = useState<any[]>([]);
-  const [playlistItems, setPlaylistItems] = useState<any[]>([]);
+  const [albumItems, setAlbumItems] = useState<DownloadedAlbum[]>([]);
+  const [playlistItems, setPlaylistItems] = useState<BaseItemDto[]>([]);
   const [showLyrics, setShowLyrics] = useState(false);
-  const navigate = useNavigate();
   const { authData } = useAuthData();
 
   useEffect(() => {
     const load = async () => {
       await localDb.initialize();
-      const all = await localDb.getAllDownloads();
-      setRows(all as any);
       const cols = await localDb.getDownloadedCollections();
-      setCollections(cols);
       // Load album/playlist metadata for card components
+      const albumCompletionMap = new Map<string, number>();
+      try {
+        const coverage = await localDb.getDownloadedTrackCountsByAlbum();
+        coverage.forEach(({ albumId, downloaded }) => {
+          if (albumId) {
+            albumCompletionMap.set(albumId, Number(downloaded) || 0);
+          }
+        });
+      } catch {}
+
       const explicitAlbumIds = cols
         .filter((c) => c.type === "album")
         .map((c) => c.id);
-      // Also infer albums from cached tracks if not explicitly marked
-      let inferredAlbumIds: string[] = [];
+      const inferredAlbumIds: string[] = [];
       try {
-        inferredAlbumIds = await localDb.getAlbumIdsWithCachedTracks();
+        const inferred = await localDb.getAlbumIdsWithCachedTracks();
+        inferredAlbumIds.push(...inferred);
       } catch {}
       const albumIds = Array.from(
-        new Set([...(explicitAlbumIds as any), ...(inferredAlbumIds as any)])
+        new Set<string>([...explicitAlbumIds, ...inferredAlbumIds])
       );
       const playlistIds = cols
         .filter((c) => c.type === "playlist")
         .map((c) => c.id);
-      const albums: any[] = [];
-      const playlists: any[] = [];
+      const albums: DownloadedAlbum[] = [];
+      const playlists: BaseItemDto[] = [];
       for (const id of albumIds) {
         try {
           const a = await localDb.getAlbumById(id);
-          if (a) albums.push(a);
+          if (!a) continue;
+          const expectedRaw = Number((a as any).ChildCount ?? 0);
+          const expected = Number.isFinite(expectedRaw) ? expectedRaw : 0;
+          const downloadedCount = albumCompletionMap.get(id) ?? 0;
+          const isExplicit = explicitAlbumIds.includes(id);
+          const fullyDownloaded =
+            expected > 0
+              ? downloadedCount >= expected
+              : isExplicit && downloadedCount > 0;
+          if (fullyDownloaded) {
+            albums.push({
+              ...a,
+              DownloadedTrackCount: downloadedCount,
+            } as DownloadedAlbum);
+          }
         } catch {}
       }
       for (const id of playlistIds) {
@@ -67,7 +77,7 @@ const Downloads: React.FC = () => {
         playlistIds.includes("favourites") &&
         !playlists.find((p) => p?.Id === "favourites")
       ) {
-        playlists.push({ Id: "favourites", Name: "Favourites" });
+        playlists.push({ Id: "favourites", Name: "Favourites" } as BaseItemDto);
       }
       setAlbumItems(albums);
       setPlaylistItems(playlists);
@@ -76,7 +86,19 @@ const Downloads: React.FC = () => {
     load();
     const onUpdate = () => load();
     window.addEventListener("downloadsUpdate", onUpdate);
-    return () => window.removeEventListener("downloadsUpdate", onUpdate);
+    window.addEventListener("playlistItemsUpdated", onUpdate as EventListener);
+    window.addEventListener("playlistItemRemoved", onUpdate as EventListener);
+    return () => {
+      window.removeEventListener("downloadsUpdate", onUpdate);
+      window.removeEventListener(
+        "playlistItemsUpdated",
+        onUpdate as EventListener
+      );
+      window.removeEventListener(
+        "playlistItemRemoved",
+        onUpdate as EventListener
+      );
+    };
   }, []);
 
   // No per-track list here: downloaded tracks live under

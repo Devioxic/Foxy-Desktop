@@ -15,7 +15,7 @@ import { useMusicPlayer } from "@/contexts/MusicContext";
 import { Music, User, Disc3, ListMusic } from "lucide-react";
 import { searchWithRelatedContent, findArtistByName } from "@/lib/jellyfin";
 import { BaseItemDto } from "@jellyfin/sdk/lib/generated-client";
-import { formatDuration } from "@/utils/media";
+import { formatDuration, resolvePrimaryImageUrl } from "@/utils/media";
 
 const SearchPage: React.FC = () => {
   const navigate = useNavigate();
@@ -115,11 +115,12 @@ const SearchPage: React.FC = () => {
 
   // Helpers for artist visuals (match Artists page style)
   const getArtistImage = (artist: BaseItemDto, size: number = 150) => {
-    const item = artist as any;
-    if (authData.serverAddress && item?.ImageTags?.Primary && artist.Id) {
-      return `${authData.serverAddress}/Items/${artist.Id}/Images/Primary?maxWidth=${size}&quality=90`;
-    }
-    return null;
+    return resolvePrimaryImageUrl({
+      item: artist as any,
+      serverAddress: authData.serverAddress,
+      accessToken: authData.accessToken || undefined,
+      size,
+    });
   };
 
   const getArtistBlurHash = (artist: BaseItemDto) => {

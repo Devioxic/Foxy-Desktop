@@ -1,31 +1,25 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback, useRef } from "react";
 import { APP_EVENTS, FavoriteStateChangedDetail } from "@/constants/events";
 import { useParams, useNavigate, useSearchParams } from "react-router-dom";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent } from "@/components/ui/card";
-import { Skeleton } from "@/components/ui/skeleton";
 import LoadingSkeleton from "@/components/LoadingSkeleton";
 import { logger } from "@/lib/logger";
-import AddToPlaylistDialog from "@/components/AddToPlaylistDialog";
 import MusicPlayer from "@/components/MusicPlayer";
 import Sidebar from "@/components/Sidebar";
 import TrackList from "@/components/TrackList";
 import { useMusicPlayer } from "@/contexts/MusicContext";
 import { Track as MusicTrack } from "@/contexts/MusicContext";
 import BackButton from "@/components/BackButton";
-import { formatDuration } from "@/utils/media";
+import { formatDuration, resolvePrimaryImageUrl } from "@/utils/media";
 import {
   Play,
-  Pause,
   Star,
-  ArrowLeft,
   Music,
   Shuffle,
   Plus,
   Loader2,
   ListPlus,
   ListMusic,
-  X,
   Download,
   MoreVertical,
   SkipForward,
@@ -44,8 +38,6 @@ import {
   showError,
 } from "@/utils/toast";
 import {
-  getPlaylistItems,
-  getPlaylistInfo,
   findArtistByName,
   getCurrentUser,
   getServerInfo,
@@ -53,10 +45,13 @@ import {
   removeFromFavorites,
   checkIsFavorite,
   deletePlaylist,
+  getItemsUserDataMap,
 } from "@/lib/jellyfin";
 import { BaseItemDto } from "@jellyfin/sdk/lib/generated-client/models";
 import { useAuthData } from "@/hooks/useAuthData";
 import { Dropdown } from "@/components/Dropdown";
+import { hybridData } from "@/lib/sync";
+import { useOfflineModeContext } from "@/contexts/OfflineModeContext";
 import {
   Dialog,
   DialogTrigger,
@@ -75,6 +70,7 @@ interface Track extends BaseItemDto {
   Artists?: string[];
   ProductionYear?: number;
   ParentIndexNumber?: number;
+  LocalImages?: { Primary?: string };
 }
 
 interface PlaylistInfo extends BaseItemDto {
@@ -85,16 +81,9 @@ interface PlaylistInfo extends BaseItemDto {
 const PlaylistView = () => {
   const { playlistId } = useParams<{ playlistId: string }>();
   const navigate = useNavigate();
-  const { authData, isAuthenticated } = useAuthData();
-  const {
-    currentTrack,
-    isPlaying,
-    playNow,
-    addToQueue,
-    playQueue,
-    queue,
-    addToQueueNext,
-  } = useMusicPlayer();
+  const { authData } = useAuthData();
+  const { currentTrack, isPlaying, addToQueue, playQueue, addToQueueNext } =
+    useMusicPlayer();
   const [searchParams] = useSearchParams();
 
   const [playlistInfo, setPlaylistInfo] = useState<PlaylistInfo | null>(null);
@@ -114,123 +103,155 @@ const PlaylistView = () => {
   const [downloading, setDownloading] = useState(false);
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
+  const spinnerPlaylistRef = useRef<string | null>(null);
+  const downloadsRefreshTimeout = useRef<number | null>(null);
 
   const handleLyricsToggle = (show: boolean) => {
     setShowLyrics(show);
   };
 
-  useEffect(() => {
-    if (playlistId) {
-      loadPlaylistData();
-    }
-  }, [playlistId]);
+  const { isOffline } = useOfflineModeContext();
 
-  useEffect(() => {
-    const trackIds = new Set(
-      (tracks || []).map((track) => track.Id).filter(Boolean) as string[]
-    );
-    const handler = (event: Event) => {
-      const { detail } = event as CustomEvent<FavoriteStateChangedDetail>;
-      if (!detail?.trackId || !trackIds.has(detail.trackId)) return;
-      setTrackFavorites((prev) => {
-        if (prev[detail.trackId] === detail.isFavorite) {
-          return prev;
-        }
-        return { ...prev, [detail.trackId]: detail.isFavorite };
-      });
-    };
-    window.addEventListener(
-      APP_EVENTS.favoriteStateChanged,
-      handler as EventListener
-    );
-    return () => {
-      window.removeEventListener(
-        APP_EVENTS.favoriteStateChanged,
-        handler as EventListener
-      );
-    };
-  }, [tracks]);
-
-  useEffect(() => {
-    if (currentTrack) {
-      setPlayingTrackId(isPlaying ? currentTrack.Id || null : null);
-    } else {
-      setPlayingTrackId(null);
-    }
-  }, [currentTrack, isPlaying]);
-
-  const loadPlaylistData = async () => {
-    setLoading(true);
-    try {
-      if (!isAuthenticated()) {
-        navigate("/login");
-        return;
+  const loadPlaylistData = useCallback(
+    async (options: { showSpinner?: boolean } = {}) => {
+      const { showSpinner = false } = options;
+      if (showSpinner) {
+        setLoading(true);
       }
-
-      const [info, items] = await Promise.all([
-        getPlaylistInfo(playlistId!),
-        getPlaylistItems(playlistId!),
-      ]);
-
-      setPlaylistInfo(info);
-      setTracks(items as Track[]);
-      if (playlistId) {
-        try {
-          const dl = await isCollectionDownloaded(playlistId);
-          setIsDownloaded(dl);
-        } catch {}
-      }
-
-      // Check if playlist is favorited
       try {
-        const favoriteStatus = await checkIsFavorite(
-          authData.serverAddress,
-          authData.accessToken,
-          playlistId!
-        );
-        setIsFavorite(favoriteStatus);
-      } catch (error) {
-        logger.error("Error checking favorite status:", error);
-      }
+        const hasAuth = Boolean(authData.accessToken && authData.serverAddress);
+        if (!playlistId) {
+          return;
+        }
 
-      // Check favorite status for all tracks
-      if (items && items.length > 0) {
-        const trackFavoritePromises = items.map(async (track) => {
-          if (track.Id) {
+        if (!hasAuth && !isOffline) {
+          navigate("/login");
+          return;
+        }
+
+        const [info, items] = await Promise.all([
+          hybridData.getPlaylistById(playlistId),
+          hybridData.getPlaylistTracks(playlistId),
+        ]);
+
+        const playlistItems: Track[] = Array.isArray(items)
+          ? (items as Track[])
+          : [];
+
+        const runtimeTicks = playlistItems.reduce(
+          (acc: number, track: Track) => acc + (track.RunTimeTicks || 0),
+          0
+        );
+
+        const normalizedInfo: PlaylistInfo | null = info
+          ? {
+              ...(info as PlaylistInfo),
+              ChildCount: playlistItems.length,
+              CumulativeRunTimeTicks:
+                runtimeTicks > 0
+                  ? runtimeTicks
+                  : info.CumulativeRunTimeTicks || 0,
+            }
+          : null;
+
+        setTracks(playlistItems);
+        setPlaylistInfo(normalizedInfo);
+
+        const initialTrackFavoriteMap: Record<string, boolean> = {};
+        const missingFavoriteIds: string[] = [];
+
+        for (const track of playlistItems) {
+          if (!track?.Id) continue;
+          const userFavorite = (track as any)?.UserData?.IsFavorite;
+          if (typeof userFavorite === "boolean") {
+            initialTrackFavoriteMap[track.Id] = userFavorite;
+          } else {
+            missingFavoriteIds.push(track.Id);
+          }
+        }
+
+        if (!isOffline && hasAuth) {
+          let playlistFavoriteSet = false;
+          if (typeof (info as any)?.UserData?.IsFavorite === "boolean") {
+            setIsFavorite(Boolean((info as any).UserData.IsFavorite));
+            playlistFavoriteSet = true;
+          }
+
+          if (!playlistFavoriteSet) {
             try {
-              const isFavorite = await checkIsFavorite(
+              const favoriteStatus = await checkIsFavorite(
                 authData.serverAddress,
                 authData.accessToken,
-                track.Id
+                playlistId
               );
-              return { id: track.Id, isFavorite };
+              setIsFavorite(favoriteStatus);
             } catch (error) {
-              logger.error(
-                `Failed to check favorite status for track ${track.Id}:`,
-                error
-              );
-              return { id: track.Id, isFavorite: false };
+              logger.error("Error checking favorite status:", error);
             }
           }
-          return null;
-        });
 
-        const trackFavoriteResults = await Promise.all(trackFavoritePromises);
-        const trackFavoriteMap: Record<string, boolean> = {};
-
-        trackFavoriteResults.forEach((result) => {
-          if (result) {
-            trackFavoriteMap[result.id] = result.isFavorite;
+          if (missingFavoriteIds.length > 0) {
+            try {
+              const favoriteMap = await getItemsUserDataMap(missingFavoriteIds);
+              for (const id of missingFavoriteIds) {
+                initialTrackFavoriteMap[id] = favoriteMap[id] ?? false;
+              }
+            } catch (error) {
+              logger.warn("Failed to resolve favorite states in bulk", error);
+            }
           }
-        });
-        setTrackFavorites(trackFavoriteMap);
+        } else {
+          setIsFavorite(false);
+        }
+
+        setTrackFavorites(initialTrackFavoriteMap);
+      } catch (error) {
+        logger.error("Failed to load playlist data", error);
+        if (isOffline) {
+          setPlaylistInfo(null);
+          setTracks([]);
+        }
+      } finally {
+        setLoading(false);
       }
-    } catch (error) {
-      logger.error("Failed to load playlist data", error);
-    } finally {
-      setLoading(false);
+    },
+    [
+      playlistId,
+      isOffline,
+      navigate,
+      authData.accessToken,
+      authData.serverAddress,
+    ]
+  );
+
+  useEffect(() => {
+    if (!playlistId) return;
+
+    const shouldShowSpinner = spinnerPlaylistRef.current !== playlistId;
+    loadPlaylistData({ showSpinner: shouldShowSpinner });
+    if (shouldShowSpinner) {
+      spinnerPlaylistRef.current = playlistId;
     }
-  };
+
+    const handleDownloadsUpdate = () => {
+      if (downloadsRefreshTimeout.current) {
+        window.clearTimeout(downloadsRefreshTimeout.current);
+      }
+      downloadsRefreshTimeout.current = window.setTimeout(() => {
+        downloadsRefreshTimeout.current = null;
+        loadPlaylistData();
+      }, 300);
+    };
+
+    window.addEventListener("downloadsUpdate", handleDownloadsUpdate);
+    return () => {
+      window.removeEventListener("downloadsUpdate", handleDownloadsUpdate);
+      if (downloadsRefreshTimeout.current) {
+        window.clearTimeout(downloadsRefreshTimeout.current);
+        downloadsRefreshTimeout.current = null;
+      }
+    };
+  }, [playlistId, loadPlaylistData]);
 
   const handleToggleDownload = async () => {
     if (!playlistId) return;
@@ -266,6 +287,7 @@ const PlaylistView = () => {
     AlbumArtist: track.AlbumArtist,
     Album: track.Album,
     ImageTags: track.ImageTags,
+    LocalImages: (track as any)?.LocalImages,
     RunTimeTicks: track.RunTimeTicks,
     MediaSources:
       track.MediaSources?.map((source) => ({
@@ -428,17 +450,37 @@ const PlaylistView = () => {
   };
 
   useEffect(() => {
-    const onRemoved = (e: any) => {
-      if (!playlistId) return;
+    if (!playlistId) return undefined;
+    const handleRefresh = (e: Event) => {
       try {
         const { playlistId: pid } = (e as CustomEvent).detail || {};
-        if (pid === playlistId) loadPlaylistData();
+        if (pid === playlistId) {
+          loadPlaylistData();
+        }
       } catch {}
     };
-    window.addEventListener("playlistItemRemoved", onRemoved as any);
-    return () =>
-      window.removeEventListener("playlistItemRemoved", onRemoved as any);
-  }, [playlistId]);
+
+    window.addEventListener("playlistItemRemoved", handleRefresh as any);
+    window.addEventListener("playlistItemsUpdated", handleRefresh as any);
+
+    return () => {
+      window.removeEventListener("playlistItemRemoved", handleRefresh as any);
+      window.removeEventListener("playlistItemsUpdated", handleRefresh as any);
+    };
+  }, [playlistId, loadPlaylistData]);
+
+  const imageUrl = playlistInfo
+    ? resolvePrimaryImageUrl({
+        item: playlistInfo as any,
+        serverAddress: authData.serverAddress,
+        accessToken: authData.accessToken || undefined,
+        size: 300,
+      })
+    : null;
+
+  useEffect(() => {
+    setImageError(false);
+  }, [imageUrl]);
 
   if (loading) {
     return (
@@ -456,6 +498,9 @@ const PlaylistView = () => {
   }
 
   if (!playlistInfo) {
+    const description = isOffline
+      ? "This playlist hasn't been downloaded yet. Head to Downloads to sync it for offline listening."
+      : "The playlist you're looking for doesn't exist or has been removed.";
     return (
       <div className="min-h-screen bg-background">
         <Sidebar activeSection="playlists" />
@@ -466,13 +511,18 @@ const PlaylistView = () => {
               <h2 className="text-xl font-semibold text-foreground mb-2">
                 Playlist not found
               </h2>
-              <p className="text-muted-foreground">
-                The playlist you're looking for doesn't exist or has been
-                removed.
-              </p>
-              <Button onClick={() => navigate(-1)} className="mt-4">
-                Go Back
-              </Button>
+              <p className="text-muted-foreground">{description}</p>
+              <div className="flex justify-center gap-3 mt-4">
+                <Button onClick={() => navigate(-1)}>Go Back</Button>
+                {isOffline && (
+                  <Button
+                    variant="outline"
+                    onClick={() => navigate("/downloads")}
+                  >
+                    View Downloads
+                  </Button>
+                )}
+              </div>
             </div>
           </div>
         </div>
@@ -483,11 +533,6 @@ const PlaylistView = () => {
       </div>
     );
   }
-
-  const imageUrl =
-    playlistInfo.Id && playlistInfo.ImageTags?.Primary
-      ? `${authData.serverAddress}/Items/${playlistInfo.Id}/Images/Primary?maxWidth=300&quality=90`
-      : null;
 
   const showPlaceholder = !imageUrl || imageError;
 
@@ -525,9 +570,7 @@ const PlaylistView = () => {
             </div>
 
             <div className="flex items-center gap-4 text-sm text-muted-foreground">
-              {playlistInfo.ChildCount && (
-                <span>{playlistInfo.ChildCount} tracks</span>
-              )}
+              <span>{tracks.length} tracks</span>
               {playlistInfo.CumulativeRunTimeTicks && (
                 <>
                   <span>•</span>
@@ -555,6 +598,24 @@ const PlaylistView = () => {
               >
                 <Shuffle className="w-4 h-4 mr-2" />
                 Shuffle
+              </Button>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={handleToggleDownload}
+                disabled={downloading}
+                className="p-1 text-muted-foreground hover:text-primary hover:bg-accent"
+                title={isDownloaded ? "Remove download" : "Download"}
+              >
+                {downloading ? (
+                  <Loader2 className="w-4 h-4 animate-spin text-muted-foreground" />
+                ) : (
+                  <Download
+                    className={`w-4 h-4 ${
+                      isDownloaded ? "text-primary" : "text-muted-foreground"
+                    }`}
+                  />
+                )}
               </Button>
               {/* Playlist actions dropdown */}
               <Dropdown

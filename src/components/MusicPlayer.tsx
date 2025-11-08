@@ -42,6 +42,7 @@ import {
   checkIsFavorite,
 } from "@/lib/jellyfin";
 import LyricsComponent from "@/components/LyricsComponent";
+import { resolvePrimaryImageUrl } from "@/utils/media";
 
 interface MusicPlayerProps {
   showLyrics?: boolean;
@@ -204,11 +205,16 @@ const MusicPlayer: React.FC<MusicPlayerProps> = ({
     setVolume(value[0] / 100);
   };
 
-  const getAlbumArt = (track: any) => {
-    if (track?.ImageTags?.Primary && serverAddress) {
-      return `${serverAddress}/Items/${track.Id}/Images/Primary?maxWidth=120&quality=90`;
-    }
-    return null;
+  const getAlbumArt = (track: any, size: number = 120) => {
+    return (
+      resolvePrimaryImageUrl({
+        item: track,
+        serverAddress,
+        accessToken: accessToken || undefined,
+        size,
+        fallbackId: track?.AlbumId,
+      }) || null
+    );
   };
 
   const handleDragStart = (e: React.DragEvent, index: number) => {
@@ -664,78 +670,81 @@ const MusicPlayer: React.FC<MusicPlayerProps> = ({
                       </p>
                     </div>
                   ) : (
-                    queue.map((track, index) => (
-                      <div
-                        key={`${track.Id}-${index}`}
-                        draggable
-                        onDragStart={(e) => handleDragStart(e, index)}
-                        onDragOver={handleDragOver}
-                        onDrop={(e) => handleDrop(e, index)}
-                        onClick={() => handleTrackClick(index)}
-                        className={`group flex items-center gap-3 p-3 rounded-lg transition-colors cursor-pointer select-none ${
-                          index === currentIndex
-                            ? "bg-primary/10 border border-primary/20"
-                            : "hover:bg-accent"
-                        } ${draggedIndex === index ? "opacity-50" : ""}`}
-                      >
-                        <div className="cursor-grab active:cursor-grabbing flex-shrink-0">
-                          <GripVertical className="w-4 h-4 text-muted-foreground" />
-                        </div>
-                        <div className="w-10 h-10 rounded overflow-hidden bg-muted flex-shrink-0">
-                          {track.ImageTags?.Primary && serverAddress ? (
-                            <img
-                              src={`${serverAddress}/Items/${track.Id}/Images/Primary?maxWidth=40&quality=90`}
-                              alt={track.Name}
-                              className="w-full h-full object-cover"
-                            />
-                          ) : (
-                            <div className="w-full h-full flex items-center justify-center">
-                              <Music className="w-4 h-4 text-muted-foreground" />
-                            </div>
-                          )}
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <p
-                            className={`text-sm font-medium truncate ${
-                              index === currentIndex
-                                ? "text-primary"
-                                : "text-card-foreground"
-                            }`}
-                          >
-                            {track.Name}
-                          </p>
-                          <p className="text-xs text-muted-foreground truncate">
-                            {track.AlbumArtist ||
-                              track.Artist ||
-                              "Unknown Artist"}
-                          </p>
-                        </div>
-                        <div className="flex items-center gap-2">
-                          {index === currentIndex && (
-                            <div
-                              className={`equalizer ${
-                                !isPlaying || isPaused ? "paused" : ""
+                    queue.map((track, index) => {
+                      const art = getAlbumArt(track, 96);
+                      return (
+                        <div
+                          key={`${track.Id}-${index}`}
+                          draggable
+                          onDragStart={(e) => handleDragStart(e, index)}
+                          onDragOver={handleDragOver}
+                          onDrop={(e) => handleDrop(e, index)}
+                          onClick={() => handleTrackClick(index)}
+                          className={`group flex items-center gap-3 p-3 rounded-lg transition-colors cursor-pointer select-none ${
+                            index === currentIndex
+                              ? "bg-primary/10 border border-primary/20"
+                              : "hover:bg-accent"
+                          } ${draggedIndex === index ? "opacity-50" : ""}`}
+                        >
+                          <div className="cursor-grab active:cursor-grabbing flex-shrink-0">
+                            <GripVertical className="w-4 h-4 text-muted-foreground" />
+                          </div>
+                          <div className="w-10 h-10 rounded overflow-hidden bg-muted flex-shrink-0">
+                            {art ? (
+                              <img
+                                src={art}
+                                alt={track.Name}
+                                className="w-full h-full object-cover"
+                              />
+                            ) : (
+                              <div className="w-full h-full flex items-center justify-center">
+                                <Music className="w-4 h-4 text-muted-foreground" />
+                              </div>
+                            )}
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <p
+                              className={`text-sm font-medium truncate ${
+                                index === currentIndex
+                                  ? "text-primary"
+                                  : "text-card-foreground"
                               }`}
                             >
-                              <span className="equalizer-bar" />
-                              <span className="equalizer-bar" />
-                              <span className="equalizer-bar" />
-                            </div>
-                          )}
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              removeFromQueue(index);
-                            }}
-                            className="p-1 text-muted-foreground hover:text-destructive hover:bg-destructive/10 opacity-0 group-hover:opacity-100 transition-opacity"
-                          >
-                            <X className="w-3 h-3" />
-                          </Button>
+                              {track.Name}
+                            </p>
+                            <p className="text-xs text-muted-foreground truncate">
+                              {track.AlbumArtist ||
+                                track.Artist ||
+                                "Unknown Artist"}
+                            </p>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            {index === currentIndex && (
+                              <div
+                                className={`equalizer ${
+                                  !isPlaying || isPaused ? "paused" : ""
+                                }`}
+                              >
+                                <span className="equalizer-bar" />
+                                <span className="equalizer-bar" />
+                                <span className="equalizer-bar" />
+                              </div>
+                            )}
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                removeFromQueue(index);
+                              }}
+                              className="p-1 text-muted-foreground hover:text-destructive hover:bg-destructive/10 opacity-0 group-hover:opacity-100 transition-opacity"
+                            >
+                              <X className="w-3 h-3" />
+                            </Button>
+                          </div>
                         </div>
-                      </div>
-                    ))
+                      );
+                    })
                   )}
                 </div>
               </div>

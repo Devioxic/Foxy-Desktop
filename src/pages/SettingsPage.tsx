@@ -29,14 +29,27 @@ import {
 } from "@/components/ui/select";
 import { useMusicPlayer } from "@/contexts/MusicContext";
 import { useToast } from "@/hooks/use-toast";
-import { clearAllDownloads } from "@/lib/downloads";
+import {
+  clearAllDownloads,
+  getDownloadQualityPreference,
+  setDownloadQualityPreference,
+  type DownloadQuality,
+} from "@/lib/downloads";
 import { useTheme } from "next-themes";
+import { useOfflineModeContext } from "@/contexts/OfflineModeContext";
 
 export default function SettingsPage() {
   const navigate = useNavigate();
   const { authData, clearAuthData } = useAuthData();
   const { toast } = useToast();
   const { theme, setTheme, systemTheme } = useTheme();
+  const {
+    isOffline,
+    isSimulated,
+    simulateOffline,
+    setSimulateOffline,
+    refreshOfflineStatus,
+  } = useOfflineModeContext();
   const [useLocalFirst, setUseLocalFirst] = useState<boolean>(() => {
     const stored = localStorage.getItem("useLocalFirst");
     return stored ? stored === "true" : true;
@@ -45,7 +58,27 @@ export default function SettingsPage() {
     const stored = localStorage.getItem("autoSync");
     return stored ? stored === "true" : false;
   });
+  const [downloadQuality, setDownloadQuality] = useState<DownloadQuality>(() =>
+    getDownloadQualityPreference()
+  );
   const [showLyrics, setShowLyrics] = useState(false);
+  const [refreshingOffline, setRefreshingOffline] = useState(false);
+
+  const downloadQualityLabels: Record<DownloadQuality, string> = {
+    original: "Original (No Transcode)",
+    high: "High (320 kbps)",
+    medium: "Medium (256 kbps)",
+    low: "Low (128 kbps)",
+  };
+
+  const handleDownloadQualityChange = (quality: DownloadQuality) => {
+    setDownloadQuality(quality);
+    setDownloadQualityPreference(quality);
+    toast({
+      title: "Download quality updated",
+      description: downloadQualityLabels[quality],
+    });
+  };
 
   useEffect(() => {
     localStorage.setItem("useLocalFirst", String(useLocalFirst));
@@ -76,6 +109,15 @@ export default function SettingsPage() {
     if (window.confirm("Are you sure you want to log out?")) {
       clearAuthData();
       navigate("/login");
+    }
+  };
+
+  const handleRefreshOffline = async () => {
+    setRefreshingOffline(true);
+    try {
+      await refreshOfflineStatus();
+    } finally {
+      setRefreshingOffline(false);
     }
   };
 
@@ -137,7 +179,7 @@ export default function SettingsPage() {
                 </h3>
                 <p className="text-sm text-muted-foreground mb-6">
                   Manage how your music library is synchronized and stored
-                  locally for better performance and offline access.
+                  locally for better performance.
                 </p>
               </div>
 
@@ -181,6 +223,80 @@ export default function SettingsPage() {
                       onCheckedChange={(v) => setAutoSync(!!v)}
                     />
                   </div>
+                  <Separator />
+
+                  <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3 md:gap-4">
+                    <div className="space-y-1">
+                      <div className="text-sm font-medium">
+                        Simulate Offline Mode
+                      </div>
+                      <div className="text-xs text-muted-foreground">
+                        Force Foxy into offline-only mode for testing when the
+                        server is reachable.
+                      </div>
+                      <div className="text-[11px] text-muted-foreground">
+                        Status: {isOffline ? "Offline" : "Online"}
+                        {isOffline && (
+                          <span>
+                            {" "}
+                            ({isSimulated ? "Simulated" : "Detected"})
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-3">
+                      <Switch
+                        checked={simulateOffline}
+                        onCheckedChange={(v) => {
+                          void setSimulateOffline(!!v);
+                        }}
+                      />
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={handleRefreshOffline}
+                        disabled={refreshingOffline}
+                      >
+                        {refreshingOffline ? "Checking..." : "Refresh"}
+                      </Button>
+                    </div>
+                  </div>
+                  <Separator />
+
+                  <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3 md:gap-4">
+                    <div className="space-y-1">
+                      <div className="text-sm font-medium">
+                        Download Quality
+                      </div>
+                      <div className="text-xs text-muted-foreground">
+                        Choose the bitrate Foxy uses when saving offline copies.
+                      </div>
+                      <div className="text-[11px] text-muted-foreground">
+                        Current: {downloadQualityLabels[downloadQuality]}
+                      </div>
+                    </div>
+                    <Select
+                      value={downloadQuality}
+                      onValueChange={(value) =>
+                        handleDownloadQualityChange(value as DownloadQuality)
+                      }
+                    >
+                      <SelectTrigger className="w-60 focus:ring-0 focus:outline-none focus-visible:ring-0">
+                        <SelectValue placeholder="Download quality" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="original">
+                          Original (No Transcode)
+                        </SelectItem>
+                        <SelectItem value="high">High (320 kbps)</SelectItem>
+                        <SelectItem value="medium">
+                          Medium (256 kbps)
+                        </SelectItem>
+                        <SelectItem value="low">Low (128 kbps)</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+
                   <Separator />
 
                   <div className="flex items-center justify-between">
