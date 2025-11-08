@@ -58,6 +58,7 @@ import {
   addItemsToPlaylist,
 } from "@/lib/jellyfin";
 import { hybridData } from "@/lib/sync";
+import { localDb } from "@/lib/database";
 // Removed IconDropdown usage
 import BackButton from "@/components/BackButton";
 import { logger } from "@/lib/logger";
@@ -94,37 +95,27 @@ const AlbumView = () => {
   const { isOffline } = useOfflineModeContext();
 
   const handleArtistClick = async (artistName: string) => {
+    const querySuffix = searchParams.get("q")
+      ? `?q=${encodeURIComponent(searchParams.get("q") || "")}`
+      : "";
+
+    if (isOffline) {
+      navigate(`/artist/${encodeURIComponent(artistName)}${querySuffix}`);
+      return;
+    }
     try {
       // Try to find the artist by name to get their ID
       const artist = await findArtistByName(artistName);
       if (artist?.Id) {
-        navigate(
-          `/artist/${artist.Id}${
-            searchParams.get("q")
-              ? `?q=${encodeURIComponent(searchParams.get("q") || "")}`
-              : ""
-          }`
-        );
+        navigate(`/artist/${artist.Id}${querySuffix}`);
       } else {
         // Fallback: navigate with the name (for now)
-        navigate(
-          `/artist/${encodeURIComponent(artistName)}${
-            searchParams.get("q")
-              ? `?q=${encodeURIComponent(searchParams.get("q") || "")}`
-              : ""
-          }`
-        );
+        navigate(`/artist/${encodeURIComponent(artistName)}${querySuffix}`);
       }
     } catch (error) {
       logger.error("Error finding artist:", error);
       // Fallback navigation
-      navigate(
-        `/artist/${encodeURIComponent(artistName)}${
-          searchParams.get("q")
-            ? `?q=${encodeURIComponent(searchParams.get("q") || "")}`
-            : ""
-        }`
-      );
+      navigate(`/artist/${encodeURIComponent(artistName)}${querySuffix}`);
     }
   };
   const {
@@ -179,6 +170,10 @@ const AlbumView = () => {
   }, [albumInfo]);
 
   const toggleAlbumFavorite = async () => {
+    if (isOffline) {
+      showError("Favourites aren't available offline.");
+      return;
+    }
     if (!albumInfo?.Id || !authData.accessToken || !authData.serverAddress)
       return;
 
@@ -208,6 +203,10 @@ const AlbumView = () => {
   };
 
   const toggleTrackFavorite = async (trackId: string) => {
+    if (isOffline) {
+      showError("Favourites aren't available offline.");
+      return;
+    }
     if (!trackId || !authData.accessToken || !authData.serverAddress) return;
 
     setFavoriteLoading((prev) => ({ ...prev, [trackId]: true }));
@@ -237,13 +236,12 @@ const AlbumView = () => {
   };
 
   useEffect(() => {
-    if (albumId) {
-      loadAlbumData();
-      const onDl = () => loadAlbumData();
-      window.addEventListener("downloadsUpdate", onDl);
-      return () => window.removeEventListener("downloadsUpdate", onDl);
-    }
-  }, [albumId]);
+    if (!albumId) return;
+    loadAlbumData();
+    const onDl = () => loadAlbumData();
+    window.addEventListener("downloadsUpdate", onDl);
+    return () => window.removeEventListener("downloadsUpdate", onDl);
+  }, [albumId, isOffline]);
 
   useEffect(() => {
     const trackIds = new Set(
@@ -275,13 +273,23 @@ const AlbumView = () => {
     loadUserInfo();
   }, []);
   useEffect(() => {
+    if (isOffline) {
+      setAllPlaylists([]);
+      return;
+    }
+    let cancelled = false;
     (async () => {
       try {
         const lists = await getAllPlaylists();
-        setAllPlaylists(lists || []);
+        if (!cancelled) {
+          setAllPlaylists(lists || []);
+        }
       } catch {}
     })();
-  }, []);
+    return () => {
+      cancelled = true;
+    };
+  }, [isOffline]);
 
   const loadUserInfo = async () => {
     try {
@@ -301,20 +309,51 @@ const AlbumView = () => {
   const loadAlbumData = async () => {
     perf.start("AlbumView.load");
     try {
-      if (!albumId) return;
-      // Prefer local data when available; hybridData also falls back locally if server fails
-      const [albumDetails, albumTracks] = await Promise.all([
-        hybridData.getAlbumById(albumId),
-        hybridData.getAlbumTracks(albumId),
-      ]);
+      if (!albumId) {
+        setAlbumInfo(null);
+        setTracks([]);
+        return;
+      }
+
+      setLoading(true);
+
+      let albumDetails: any = null;
+      let albumTracks: any[] = [];
+
+      try {
+        const results = await Promise.all([
+          hybridData.getAlbumById(albumId),
+          hybridData.getAlbumTracks(albumId),
+        ]);
+        albumDetails = results[0];
+        albumTracks = Array.isArray(results[1]) ? (results[1] as any[]) : [];
+      } catch (error) {
+        logger.warn("Hybrid album lookup failed", error);
+      }
+
+      if (isOffline) {
+        try {
+          await localDb.initialize();
+          if (!albumDetails) {
+            albumDetails = await localDb.getAlbumById(albumId);
+          }
+          if (!albumTracks.length) {
+            const localAlbumTracks = await localDb.getTracksByAlbumId(albumId);
+            albumTracks = Array.isArray(localAlbumTracks)
+              ? localAlbumTracks
+              : [];
+          }
+        } catch (localError) {
+          logger.warn("Offline local album load failed", localError);
+        }
+      }
 
       if (!albumDetails && (!authData.accessToken || !authData.serverAddress)) {
-        // If offline and no local album present, bail gracefully
         setAlbumInfo(null);
         setTracks([]);
       } else {
-        setAlbumInfo(albumDetails as any);
-        setTracks((albumTracks as any) || []);
+        setAlbumInfo((albumDetails as any) || null);
+        setTracks(Array.isArray(albumTracks) ? (albumTracks as any) : []);
       }
       if (albumId) {
         try {
@@ -389,6 +428,10 @@ const AlbumView = () => {
   const handleToggleDownload = async () => {
     if (!albumInfo?.Id) return;
     if (downloading) return;
+    if (isOffline && !isDownloaded) {
+      showError("Connect to the server to download this album.");
+      return;
+    }
     setDownloading(true);
     const id = showLoading(
       isDownloaded ? "Removing downloads..." : "Downloading album..."
@@ -451,6 +494,10 @@ const AlbumView = () => {
     toInsert.forEach((t) => addToQueueNext(t as any));
   };
   const handleAddAlbumToPlaylist = async (playlistId: string) => {
+    if (isOffline) {
+      showError("Playlists aren't available offline.");
+      return;
+    }
     const ids = tracks.map((t) => t.Id!).filter(Boolean) as string[];
     if (!ids.length) return;
     setAddingTo(playlistId);
@@ -647,12 +694,14 @@ const AlbumView = () => {
                     variant="ghost"
                     size="sm"
                     onClick={toggleAlbumFavorite}
-                    disabled={favoriteLoading[albumInfo.Id || ""]}
+                    disabled={isOffline || favoriteLoading[albumInfo.Id || ""]}
                     className="p-1 text-muted-foreground hover:text-primary hover:bg-accent"
                     title={
-                      isAlbumFavorite
-                        ? "Remove from favourites"
-                        : "Add to favourites"
+                      isOffline
+                        ? "Favourites unavailable offline"
+                        : isAlbumFavorite
+                          ? "Remove from favourites"
+                          : "Add to favourites"
                     }
                   >
                     {favoriteLoading[albumInfo.Id || ""] ? (
@@ -673,7 +722,7 @@ const AlbumView = () => {
                     variant="ghost"
                     size="sm"
                     onClick={handleToggleDownload}
-                    disabled={downloading}
+                    disabled={downloading || (isOffline && !isDownloaded)}
                     className="p-1 text-muted-foreground hover:text-primary hover:bg-accent"
                     title={isDownloaded ? "Remove download" : "Download"}
                   >
@@ -720,14 +769,15 @@ const AlbumView = () => {
                             />
                           ),
                           onSelect: toggleAlbumFavorite,
-                          disabled: !!favoriteLoading[albumInfo.Id || ""],
+                          disabled:
+                            isOffline || !!favoriteLoading[albumInfo.Id || ""],
                         },
                         {
                           id: "add-to-playlist",
                           label: "Add to playlist",
                           icon: <ListPlus className="w-4 h-4" />,
                           onSelect: () => setAddAlbumDialogOpen(true),
-                          disabled: tracks.length === 0,
+                          disabled: tracks.length === 0 || isOffline,
                         },
                         {
                           id: "download",
@@ -740,7 +790,7 @@ const AlbumView = () => {
                             />
                           ),
                           onSelect: handleToggleDownload,
-                          disabled: downloading,
+                          disabled: downloading || (isOffline && !isDownloaded),
                         },
                         {
                           id: "add-all",
@@ -785,6 +835,7 @@ const AlbumView = () => {
                     onToggleTrackFavorite={toggleTrackFavorite}
                     albumArtist={albumInfo.AlbumArtist}
                     formatDuration={formatDuration}
+                    isOffline={isOffline}
                   />
                 </div>
               </div>
@@ -802,23 +853,30 @@ const AlbumView = () => {
             </DialogDescription>
           </DialogHeader>
           <div className="max-h-80 overflow-y-auto space-y-1">
-            {allPlaylists.map((pl: any) => (
-              <button
-                key={pl.Id}
-                className="w-full text-left px-3 py-2 rounded hover:bg-accent flex items-center justify-between"
-                onClick={() => handleAddAlbumToPlaylist(pl.Id)}
-                disabled={addingTo === pl.Id}
-              >
-                <span className="truncate">{pl.Name}</span>
-                {addingTo === pl.Id && (
-                  <Loader2 className="w-4 h-4 animate-spin text-primary" />
-                )}
-              </button>
-            ))}
-            {allPlaylists.length === 0 && (
+            {!isOffline &&
+              allPlaylists.map((pl: any) => (
+                <button
+                  key={pl.Id}
+                  className="w-full text-left px-3 py-2 rounded hover:bg-accent flex items-center justify-between"
+                  onClick={() => handleAddAlbumToPlaylist(pl.Id)}
+                  disabled={addingTo === pl.Id}
+                >
+                  <span className="truncate">{pl.Name}</span>
+                  {addingTo === pl.Id && (
+                    <Loader2 className="w-4 h-4 animate-spin text-primary" />
+                  )}
+                </button>
+              ))}
+            {isOffline ? (
               <div className="text-sm text-muted-foreground">
-                No playlists found.
+                Playlists aren't available offline.
               </div>
+            ) : (
+              allPlaylists.length === 0 && (
+                <div className="text-sm text-muted-foreground">
+                  No playlists found.
+                </div>
+              )
             )}
           </div>
           <DialogFooter>

@@ -5,6 +5,59 @@ interface Item {
   LocalImages?: { Primary?: string | null };
 }
 
+type PrimaryImageCacheDetail = {
+  id: string;
+  type?: string;
+  relPath?: string | null;
+  mediaUrl?: string | null;
+  imageTag?: string | null;
+};
+
+const runtimeImageCache: Map<string, string> | null =
+  typeof window !== "undefined" ? new Map<string, string>() : null;
+
+const cacheImage = (id: string | null | undefined, src: string) => {
+  if (!id || !runtimeImageCache) return;
+  runtimeImageCache.set(id, src);
+};
+
+const getCachedImage = (id: string | null | undefined): string | null => {
+  if (!id || !runtimeImageCache) return null;
+  return runtimeImageCache.get(id) ?? null;
+};
+
+if (typeof window !== "undefined") {
+  const globalAny = window as any;
+  if (!globalAny.__foxyImageCache) {
+    globalAny.__foxyImageCache = runtimeImageCache;
+  }
+  window.addEventListener("primaryImageCached", ((event: Event) => {
+    const { detail } = event as CustomEvent<PrimaryImageCacheDetail>;
+    if (!detail?.mediaUrl || !detail.id) return;
+    cacheImage(detail.id, detail.mediaUrl);
+    if (detail.type) {
+      cacheImage(`${detail.type}:${detail.id}`, detail.mediaUrl);
+    }
+    if (detail.relPath) {
+      cacheImage(`rel:${detail.relPath}`, detail.mediaUrl);
+    }
+  }) as EventListener);
+}
+
+const collectCandidateIds = (
+  item?: Item | null,
+  fallbackId?: string
+): Array<string | undefined> => {
+  if (!item && !fallbackId) return [];
+  return [
+    item?.Id,
+    (item as any)?.ItemId,
+    fallbackId,
+    (item as any)?.AlbumId,
+    (item as any)?.CollectionId,
+  ];
+};
+
 const getStoredAccessToken = (): string | undefined => {
   if (typeof window === "undefined") return undefined;
   try {
@@ -39,6 +92,12 @@ export const resolvePrimaryImageUrl = (options: {
   const localSrc = (item as any)?.LocalImages?.Primary;
   if (typeof localSrc === "string" && localSrc.length > 0) {
     return localSrc;
+  }
+
+  const candidateIds = collectCandidateIds(item, fallbackId);
+  for (const id of candidateIds) {
+    const cached = getCachedImage(id);
+    if (cached) return cached;
   }
 
   const itemId =

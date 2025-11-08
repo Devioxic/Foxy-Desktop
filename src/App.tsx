@@ -14,6 +14,9 @@ import LoadingSkeleton from "@/components/LoadingSkeleton";
 import Sidebar from "@/components/Sidebar";
 import MusicPlayer from "@/components/MusicPlayer";
 import OfflineMode from "@/components/OfflineMode";
+import { Button } from "@/components/ui/button";
+import { AlertTriangle } from "lucide-react";
+import SettingsPageComponent from "@/pages/SettingsPage";
 import { Toaster } from "sonner"; // Global toast renderer
 import { ThemeProvider } from "next-themes";
 import {
@@ -39,7 +42,9 @@ const FavouritePlaylistView = React.lazy(
   () => import("@/pages/FavouritePlaylistView")
 );
 const Favourites = React.lazy(() => import("@/pages/Favourites"));
-const SettingsPage = React.lazy(() => import("@/pages/SettingsPage"));
+const SettingsPage = React.lazy(async () => ({
+  default: SettingsPageComponent,
+}));
 const NotFound = React.lazy(() => import("@/pages/NotFound"));
 
 const LoadingFallback = () => (
@@ -62,24 +67,27 @@ const LayoutFallback: React.FC<{ activeSection: string; type: any }> = ({
   </div>
 );
 
-const OfflineGuard: React.FC<{
+type OfflineGuardProps = {
   allowOffline?: boolean;
   title?: string;
   message?: string;
   showDownloadsButton?: boolean;
   activeSection?: string;
-  children: React.ReactNode;
-}> = ({
+  renderContent: () => React.ReactNode;
+};
+
+const OfflineGuard: React.FC<OfflineGuardProps> = ({
   allowOffline = false,
   title,
   message,
   showDownloadsButton = true,
   activeSection,
-  children,
+  renderContent,
 }) => {
-  const { isOffline } = useOfflineModeContext();
+  const { isOffline, simulateOffline } = useOfflineModeContext();
+  const isOfflineActive = isOffline || simulateOffline;
 
-  if (isOffline && !allowOffline) {
+  if (isOfflineActive && !allowOffline) {
     return (
       <div className="min-h-screen bg-background">
         <Sidebar activeSection={activeSection} />
@@ -98,14 +106,91 @@ const OfflineGuard: React.FC<{
     );
   }
 
-  return <>{children}</>;
+  return <>{renderContent()}</>;
 };
 
 type LayoutFallbackOptions = React.ComponentProps<typeof LayoutFallback>;
-type OfflineGuardOptions = Omit<
-  React.ComponentProps<typeof OfflineGuard>,
-  "children"
->;
+type OfflineGuardOptions = Omit<OfflineGuardProps, "renderContent">;
+
+const isDynamicImportError = (error?: Error) => {
+  if (!error) return false;
+  const message = error.message || "";
+  return (
+    message.includes("Failed to fetch dynamically imported module") ||
+    message.includes("Importing a module script failed")
+  );
+};
+
+const OfflineRouteFallback: React.FC<OfflineGuardOptions> = ({
+  title,
+  message,
+  showDownloadsButton = true,
+  activeSection,
+  allowOffline,
+}) => (
+  <div className="min-h-screen bg-background">
+    <Sidebar activeSection={activeSection} />
+    <div className="ml-64 p-6 pb-28">
+      <OfflineMode
+        title={title ?? "Offline Mode Active"}
+        message={
+          message ??
+          (allowOffline
+            ? "This section is taking a moment to load."
+            : "This section isn't available while the server is offline. Check your downloads to enjoy your offline library.")
+        }
+        showDownloadsButton={showDownloadsButton}
+      />
+    </div>
+    <MusicPlayer />
+  </div>
+);
+
+interface RouteErrorFallbackProps {
+  error?: Error;
+  resetError: () => void;
+  offlineOptions?: OfflineGuardOptions;
+}
+
+const RouteErrorFallback: React.FC<RouteErrorFallbackProps> = ({
+  error,
+  resetError,
+  offlineOptions,
+}) => {
+  if (isDynamicImportError(error)) {
+    return <OfflineRouteFallback {...(offlineOptions ?? {})} />;
+  }
+
+  return (
+    <div className="min-h-screen bg-gray-50 flex items-center justify-center p-6">
+      <div className="text-center max-w-md">
+        <AlertTriangle className="w-16 h-16 text-red-500 mx-auto mb-4" />
+        <h2 className="text-2xl font-bold text-gray-900 mb-2">
+          Something went wrong
+        </h2>
+        <p className="text-gray-600 mb-6">
+          An unexpected error occurred. Please try again.
+        </p>
+        <div className="space-x-4">
+          <Button onClick={resetError} variant="outline">
+            Try Again
+          </Button>
+          <Button onClick={() => window.location.reload()}>Refresh Page</Button>
+        </div>
+        {error && (
+          <details className="mt-6 text-left">
+            <summary className="cursor-pointer text-sm text-gray-500 hover:text-gray-700">
+              Error Details
+            </summary>
+            <pre className="mt-2 text-xs text-gray-600 bg-gray-100 p-3 rounded overflow-auto">
+              {error.stack}
+            </pre>
+          </details>
+        )}
+      </div>
+    </div>
+  );
+};
 
 type RenderLazyRouteOptions = {
   layoutFallback?: LayoutFallbackOptions;
@@ -117,23 +202,46 @@ const renderLazyRoute = (
   Component: React.LazyExoticComponent<React.ComponentType<unknown>>,
   { layoutFallback, fallback, offline }: RenderLazyRouteOptions = {}
 ) => {
-  const suspenseFallback = layoutFallback ? (
-    <LayoutFallback {...layoutFallback} />
-  ) : (
-    (fallback ?? <LoadingFallback />)
-  );
+  const RouteWrapper: React.FC = () => {
+    const { isOffline, simulateOffline } = useOfflineModeContext();
+    const isOfflineActive = isOffline || simulateOffline;
 
-  const content = (
-    <Suspense fallback={suspenseFallback}>
-      <Component />
-    </Suspense>
-  );
+    const suspenseFallback = layoutFallback ? (
+      <LayoutFallback {...layoutFallback} />
+    ) : (
+      (fallback ?? <LoadingFallback />)
+    );
 
-  if (offline) {
-    return <OfflineGuard {...offline}>{content}</OfflineGuard>;
-  }
+    const renderLazyContent = () => (
+      <Suspense fallback={suspenseFallback}>
+        <Component />
+      </Suspense>
+    );
 
-  return content;
+    if (offline && isOfflineActive && !offline.allowOffline) {
+      return <OfflineRouteFallback {...offline} />;
+    }
+
+    return (
+      <ErrorBoundary
+        fallback={({ error, resetError }) => (
+          <RouteErrorFallback
+            error={error}
+            resetError={resetError}
+            offlineOptions={offline}
+          />
+        )}
+      >
+        {offline ? (
+          <OfflineGuard {...offline} renderContent={renderLazyContent} />
+        ) : (
+          renderLazyContent()
+        )}
+      </ErrorBoundary>
+    );
+  };
+
+  return <RouteWrapper />;
 };
 
 const AppContent = () => {

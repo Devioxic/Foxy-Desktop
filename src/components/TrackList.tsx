@@ -60,6 +60,8 @@ interface TrackListProps {
   assumeAllDownloaded?: boolean;
   // If present, enables per-track removal from that playlist
   playlistId?: string;
+  // When true, disable actions that require the server
+  isOffline?: boolean;
 }
 
 const TrackList: React.FC<TrackListProps> = React.memo(
@@ -83,6 +85,7 @@ const TrackList: React.FC<TrackListProps> = React.memo(
     usePlaylistIndex = false,
     assumeAllDownloaded = false,
     playlistId,
+    isOffline = false,
   }) => {
     const navigate = useNavigate();
     const { queue, playNow, addToQueue, addToQueueNext } = useMusicPlayer();
@@ -297,7 +300,7 @@ const TrackList: React.FC<TrackListProps> = React.memo(
                 onClick={(e) => e.stopPropagation()}
                 onMouseDown={(e) => e.stopPropagation()}
               >
-                {track.Id && track.Name && (
+                {track.Id && track.Name && !isOffline && (
                   <Button
                     variant="ghost"
                     size="sm"
@@ -353,11 +356,11 @@ const TrackList: React.FC<TrackListProps> = React.memo(
                             />
                           ),
                           onSelect: () => onToggleTrackFavorite(track.Id!),
-                          disabled: !!favoriteLoading[track.Id],
+                          disabled: isOffline || !!favoriteLoading[track.Id],
                         });
                       }
                       // Add to playlist
-                      if (track.Id && track.Name) {
+                      if (track.Id && track.Name && !isOffline) {
                         actions.push({
                           id: "add-to-playlist",
                           label: "Add to playlist",
@@ -385,6 +388,7 @@ const TrackList: React.FC<TrackListProps> = React.memo(
                             />
                           ),
                           onSelect: async () => {
+                            if (isOffline && !downloadedMap[track.Id]) return;
                             if (!track.Id) return;
                             setDlLoading((m) => ({ ...m, [track.Id!]: true }));
                             try {
@@ -435,7 +439,9 @@ const TrackList: React.FC<TrackListProps> = React.memo(
                               } catch {}
                             }
                           },
-                          disabled: !!dlLoading[track.Id],
+                          disabled:
+                            !!dlLoading[track.Id] ||
+                            (isOffline && !downloadedMap[track.Id]),
                         });
                       }
                       // Add to queue

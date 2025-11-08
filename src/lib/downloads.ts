@@ -182,6 +182,36 @@ const toSafeFilename = (s: string) =>
 
 type ImageEntity = "album" | "playlist" | "track" | "artist";
 
+interface CachedImageResult {
+  relPath: string | null;
+  mediaUrl: string | null;
+  imageTag?: string | null;
+}
+
+const toMediaProtocolUrl = (rel?: string | null): string | null => {
+  if (!rel) return null;
+  const normalized = String(rel).replace(/^\/+/, "");
+  return `media:///${encodeURI(normalized)}`;
+};
+
+const notifyPrimaryImageCached = (detail: {
+  id: string;
+  type: ImageEntity;
+  relPath: string | null;
+  mediaUrl: string | null;
+  imageTag?: string | null;
+}) => {
+  if (typeof window === "undefined") return;
+  if (!detail.mediaUrl || !detail.id) return;
+  try {
+    window.dispatchEvent(
+      new CustomEvent("primaryImageCached", {
+        detail,
+      })
+    );
+  } catch {}
+};
+
 const determineImageExtension = (contentType: string | null): string => {
   if (!contentType) return "jpg";
   if (contentType.includes("png")) return "png";
@@ -197,23 +227,36 @@ async function ensurePrimaryImageCached(params: {
   accessToken?: string;
   imageTag?: string | null;
   displayName?: string;
-}): Promise<string | null> {
+}): Promise<CachedImageResult> {
   const { itemId, type, serverAddress, accessToken, imageTag, displayName } =
     params;
-  if (!itemId) return null;
+  if (!itemId) return { relPath: null, mediaUrl: null };
 
   await localDb.initialize();
   const existing = await localDb.getLocalPrimaryImageInfo(type, itemId);
+  const existingUrl = toMediaProtocolUrl(existing?.path);
   if (existing?.path && (!imageTag || existing.tag === imageTag)) {
-    return existing.path;
+    return {
+      relPath: existing.path,
+      mediaUrl: existingUrl,
+      imageTag: existing.tag ?? null,
+    };
   }
 
   if (!serverAddress || !accessToken) {
-    return existing?.path || null;
+    return {
+      relPath: existing?.path || null,
+      mediaUrl: existingUrl,
+      imageTag: existing?.tag ?? null,
+    };
   }
 
   if (!(window as any).electronAPI?.mediaSave) {
-    return existing?.path || null;
+    return {
+      relPath: existing?.path || null,
+      mediaUrl: existingUrl,
+      imageTag: existing?.tag ?? null,
+    };
   }
 
   try {
@@ -221,7 +264,11 @@ async function ensurePrimaryImageCached(params: {
     const url = `${serverAddress}/Items/${itemId}/Images/Primary?maxWidth=600&quality=90${tagQuery}&api_key=${accessToken}`;
     const response = await fetch(url);
     if (!response.ok) {
-      return existing?.path || null;
+      return {
+        relPath: existing?.path || null,
+        mediaUrl: existingUrl,
+        imageTag: existing?.tag ?? null,
+      };
     }
     const contentType = response.headers.get("content-type");
     const extension = determineImageExtension(contentType);
@@ -244,10 +291,26 @@ async function ensurePrimaryImageCached(params: {
       }
     }
     await localDb.setLocalPrimaryImage(type, itemId, rel, imageTag || null);
-    return rel;
+    const mediaUrl = toMediaProtocolUrl(rel);
+    notifyPrimaryImageCached({
+      id: itemId,
+      type,
+      relPath: rel,
+      mediaUrl,
+      imageTag: imageTag || null,
+    });
+    return {
+      relPath: rel,
+      mediaUrl,
+      imageTag: imageTag || null,
+    };
   } catch (error) {
     logger.warn("Failed to cache image", error);
-    return existing?.path || null;
+    return {
+      relPath: existing?.path || null,
+      mediaUrl: existingUrl,
+      imageTag: existing?.tag ?? null,
+    };
   }
 }
 
@@ -341,7 +404,7 @@ export async function downloadTrack(params: {
                 );
                 if (album) {
                   await localDb.saveAlbums([album as any]);
-                  await ensurePrimaryImageCached({
+                  const albumImage = await ensurePrimaryImageCached({
                     itemId: String(album.Id || albumIdForFetch),
                     type: "album",
                     serverAddress: auth?.serverAddress,
@@ -352,6 +415,12 @@ export async function downloadTrack(params: {
                       null,
                     displayName: (album as any)?.Name ?? undefined,
                   });
+                  if (albumImage.mediaUrl) {
+                    (album as any).LocalImages = {
+                      ...(album as any).LocalImages,
+                      Primary: albumImage.mediaUrl,
+                    };
+                  }
                 }
               } catch (e) {
                 logger.warn(
@@ -372,7 +441,7 @@ export async function downloadTrack(params: {
       }
       try {
         if (trackMetadata) {
-          await ensurePrimaryImageCached({
+          const trackImage = await ensurePrimaryImageCached({
             itemId: trackId,
             type: "track",
             serverAddress: auth?.serverAddress,
@@ -383,9 +452,15 @@ export async function downloadTrack(params: {
               null,
             displayName: trackMetadata.Name ?? name,
           });
+          if (trackImage.mediaUrl) {
+            (trackMetadata as any).LocalImages = {
+              ...(trackMetadata as any).LocalImages,
+              Primary: trackImage.mediaUrl,
+            };
+          }
           const albumId = (trackMetadata as any)?.AlbumId;
           if (albumId) {
-            await ensurePrimaryImageCached({
+            const albumImage = await ensurePrimaryImageCached({
               itemId: String(albumId),
               type: "album",
               serverAddress: auth?.serverAddress,
@@ -399,6 +474,9 @@ export async function downloadTrack(params: {
                 (trackMetadata as any)?.AlbumTitle ??
                 undefined,
             });
+            if (albumImage.mediaUrl) {
+              (trackMetadata as any).LocalAlbumImage = albumImage.mediaUrl;
+            }
           }
         }
       } catch (e) {
@@ -570,7 +648,7 @@ export async function downloadAlbumById(
     );
     if (album) {
       await localDb.saveAlbums([album as any]);
-      await ensurePrimaryImageCached({
+      const albumImage = await ensurePrimaryImageCached({
         itemId: String(album.Id || albumId),
         type: "album",
         serverAddress: auth.serverAddress,
@@ -581,6 +659,12 @@ export async function downloadAlbumById(
           null,
         displayName: (album as any)?.Name ?? name,
       });
+      if (albumImage.mediaUrl) {
+        (album as any).LocalImages = {
+          ...(album as any).LocalImages,
+          Primary: albumImage.mediaUrl,
+        };
+      }
     }
   } catch (e) {
     logger.warn("Saving album info after download failed", e);
@@ -653,7 +737,7 @@ export async function downloadPlaylistById(
     const playlist = await getPlaylistInfo(playlistId);
     if (playlist) {
       await localDb.savePlaylists([playlist as any]);
-      await ensurePrimaryImageCached({
+      const playlistImage = await ensurePrimaryImageCached({
         itemId: String(playlist.Id || playlistId),
         type: "playlist",
         serverAddress: auth.serverAddress,
@@ -664,6 +748,12 @@ export async function downloadPlaylistById(
           null,
         displayName: (playlist as any)?.Name ?? name,
       });
+      if (playlistImage.mediaUrl) {
+        (playlist as any).LocalImages = {
+          ...(playlist as any).LocalImages,
+          Primary: playlistImage.mediaUrl,
+        };
+      }
     }
   } catch (e) {
     logger.warn("Saving playlist info after download failed", e);
