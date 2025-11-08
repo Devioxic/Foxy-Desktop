@@ -470,7 +470,7 @@ export async function downloadTrack(params: {
                 (trackMetadata as any)?.Album?.PrimaryImageTag ??
                 null,
               displayName:
-                (trackMetadata as any)?.Album ??
+                (trackMetadata as any)?.Album?.Name ??
                 (trackMetadata as any)?.AlbumTitle ??
                 undefined,
             });
