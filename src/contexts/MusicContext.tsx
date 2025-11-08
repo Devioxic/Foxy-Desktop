@@ -438,13 +438,14 @@ export const MusicProvider: React.FC<MusicProviderProps> = ({ children }) => {
   // Helper function to update Media Session API
   const updateMediaSession = (track: Track | null) => {
     if ("mediaSession" in navigator && track) {
-      const albumArt = resolvePrimaryImageUrl({
-        item: track as any,
-        serverAddress,
-        accessToken: accessToken || undefined,
-        size: 512,
-        fallbackId: (track as any)?.AlbumId,
-      }) || undefined;
+      const albumArt =
+        resolvePrimaryImageUrl({
+          item: track as any,
+          serverAddress,
+          accessToken: accessToken || undefined,
+          size: 512,
+          fallbackId: (track as any)?.AlbumId,
+        }) || undefined;
 
       navigator.mediaSession.metadata = new MediaMetadata({
         title: track.Name || "Unknown Title",

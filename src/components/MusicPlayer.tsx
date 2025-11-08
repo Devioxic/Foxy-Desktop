@@ -702,46 +702,46 @@ const MusicPlayer: React.FC<MusicPlayerProps> = ({
                               </div>
                             )}
                           </div>
-                        <div className="flex-1 min-w-0">
-                          <p
-                            className={`text-sm font-medium truncate ${
-                              index === currentIndex
-                                ? "text-primary"
-                                : "text-card-foreground"
-                            }`}
-                          >
-                            {track.Name}
-                          </p>
-                          <p className="text-xs text-muted-foreground truncate">
-                            {track.AlbumArtist ||
-                              track.Artist ||
-                              "Unknown Artist"}
-                          </p>
-                        </div>
-                        <div className="flex items-center gap-2">
-                          {index === currentIndex && (
-                            <div
-                              className={`equalizer ${
-                                !isPlaying || isPaused ? "paused" : ""
+                          <div className="flex-1 min-w-0">
+                            <p
+                              className={`text-sm font-medium truncate ${
+                                index === currentIndex
+                                  ? "text-primary"
+                                  : "text-card-foreground"
                               }`}
                             >
-                              <span className="equalizer-bar" />
-                              <span className="equalizer-bar" />
-                              <span className="equalizer-bar" />
-                            </div>
-                          )}
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              removeFromQueue(index);
-                            }}
-                            className="p-1 text-muted-foreground hover:text-destructive hover:bg-destructive/10 opacity-0 group-hover:opacity-100 transition-opacity"
-                          >
-                            <X className="w-3 h-3" />
-                          </Button>
-                        </div>
+                              {track.Name}
+                            </p>
+                            <p className="text-xs text-muted-foreground truncate">
+                              {track.AlbumArtist ||
+                                track.Artist ||
+                                "Unknown Artist"}
+                            </p>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            {index === currentIndex && (
+                              <div
+                                className={`equalizer ${
+                                  !isPlaying || isPaused ? "paused" : ""
+                                }`}
+                              >
+                                <span className="equalizer-bar" />
+                                <span className="equalizer-bar" />
+                                <span className="equalizer-bar" />
+                              </div>
+                            )}
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                removeFromQueue(index);
+                              }}
+                              className="p-1 text-muted-foreground hover:text-destructive hover:bg-destructive/10 opacity-0 group-hover:opacity-100 transition-opacity"
+                            >
+                              <X className="w-3 h-3" />
+                            </Button>
+                          </div>
                         </div>
                       );
                     })

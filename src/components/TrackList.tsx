@@ -98,8 +98,8 @@ const TrackList: React.FC<TrackListProps> = React.memo(
     const [downloadedMap, setDownloadedMap] = useState<Record<string, boolean>>(
       {}
     );
-  const [dlLoading, setDlLoading] = useState<Record<string, boolean>>({});
-  const trackIdsRef = useRef<Set<string>>(new Set());
+    const [dlLoading, setDlLoading] = useState<Record<string, boolean>>({});
+    const trackIdsRef = useRef<Set<string>>(new Set());
 
     const isCurrentTrack = (trackId?: string) =>
       trackId && currentTrack?.Id === trackId;
@@ -133,7 +133,9 @@ const TrackList: React.FC<TrackListProps> = React.memo(
     // Download state handling
     const lastIdSignatureRef = useRef<string | null>(null);
     useEffect(() => {
-      trackIdsRef.current = new Set(tracks.map((t) => t.Id).filter(Boolean) as string[]);
+      trackIdsRef.current = new Set(
+        tracks.map((t) => t.Id).filter(Boolean) as string[]
+      );
     }, [tracks]);
     useEffect(() => {
       const idSignature = tracks.map((t) => t.Id).join(",");
@@ -177,7 +179,9 @@ const TrackList: React.FC<TrackListProps> = React.memo(
 
     useEffect(() => {
       const handler = (event: Event) => {
-        const detail = (event as CustomEvent<{ trackId?: string; downloaded?: boolean }>).detail;
+        const detail = (
+          event as CustomEvent<{ trackId?: string; downloaded?: boolean }>
+        ).detail;
         if (!detail?.trackId) return;
         if (!trackIdsRef.current.has(detail.trackId)) return;
         setDownloadedMap((prev) => {

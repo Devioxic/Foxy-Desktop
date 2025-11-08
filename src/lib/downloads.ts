@@ -47,8 +47,8 @@ async function ensurePrimaryImageCached(params: {
   }
 
   try {
-  const tagQuery = imageTag ? `&tag=${encodeURIComponent(imageTag)}` : "";
-  const url = `${serverAddress}/Items/${itemId}/Images/Primary?maxWidth=600&quality=90${tagQuery}&api_key=${accessToken}`;
+    const tagQuery = imageTag ? `&tag=${encodeURIComponent(imageTag)}` : "";
+    const url = `${serverAddress}/Items/${itemId}/Images/Primary?maxWidth=600&quality=90${tagQuery}&api_key=${accessToken}`;
     const response = await fetch(url);
     if (!response.ok) {
       return existing?.path || null;
@@ -149,8 +149,7 @@ export async function downloadTrack(params: {
       });
       if (!skipMetadata) {
         try {
-          let trackToPersist: BaseItemDto | null | undefined =
-            trackMetadata;
+          let trackToPersist: BaseItemDto | null | undefined = trackMetadata;
           let albumIdForFetch: string | undefined;
 
           if (!trackToPersist && auth.serverAddress && auth.accessToken) {

@@ -238,7 +238,11 @@ class LocalDatabase {
         this.db.exec("ALTER TABLE tracks ADD COLUMN cached_at INTEGER");
       } catch (e) {}
       // Local image columns for offline artwork
-      const imageColumnMigrations: Array<{ table: string; column: string; sql: string }> = [
+      const imageColumnMigrations: Array<{
+        table: string;
+        column: string;
+        sql: string;
+      }> = [
         {
           table: "artists",
           column: "local_primary_image",

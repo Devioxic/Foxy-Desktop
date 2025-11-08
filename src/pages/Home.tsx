@@ -128,47 +128,47 @@ const Home = () => {
                                   </div>
                                 )}
                               </div>
-                            <div className="flex-1 p-4 min-w-0">
-                              <h3
-                                className="font-medium text-foreground text-sm leading-tight mb-1 overflow-hidden"
-                                style={{
-                                  display: "-webkit-box",
-                                  WebkitLineClamp: 2,
-                                  WebkitBoxOrient: "vertical",
-                                }}
-                              >
-                                {item.Name}
-                              </h3>
-                              <p className="text-sm text-muted-foreground truncate">
-                                {item.AlbumArtist || "Unknown Artist"}
-                              </p>
-                            </div>
-                            <div className="px-4 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0">
-                              <Button
-                                size="sm"
-                                onClick={async (e) => {
-                                  e.stopPropagation();
-                                  try {
-                                    const res = await getAlbumItems(
-                                      authData.serverAddress,
-                                      authData.accessToken,
-                                      item.Id
-                                    );
-                                    const tracks = res?.Items || [];
-                                    if (tracks.length) {
-                                      playQueue(tracks as any[], 0);
+                              <div className="flex-1 p-4 min-w-0">
+                                <h3
+                                  className="font-medium text-foreground text-sm leading-tight mb-1 overflow-hidden"
+                                  style={{
+                                    display: "-webkit-box",
+                                    WebkitLineClamp: 2,
+                                    WebkitBoxOrient: "vertical",
+                                  }}
+                                >
+                                  {item.Name}
+                                </h3>
+                                <p className="text-sm text-muted-foreground truncate">
+                                  {item.AlbumArtist || "Unknown Artist"}
+                                </p>
+                              </div>
+                              <div className="px-4 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0">
+                                <Button
+                                  size="sm"
+                                  onClick={async (e) => {
+                                    e.stopPropagation();
+                                    try {
+                                      const res = await getAlbumItems(
+                                        authData.serverAddress,
+                                        authData.accessToken,
+                                        item.Id
+                                      );
+                                      const tracks = res?.Items || [];
+                                      if (tracks.length) {
+                                        playQueue(tracks as any[], 0);
+                                      }
+                                    } catch (err) {
+                                      logger.error("Failed to play album", err);
                                     }
-                                  } catch (err) {
-                                    logger.error("Failed to play album", err);
-                                  }
-                                }}
-                                className="rounded-full w-10 h-10"
-                              >
-                                <Play className="w-4 h-4 ml-0.5" />
-                              </Button>
+                                  }}
+                                  className="rounded-full w-10 h-10"
+                                >
+                                  <Play className="w-4 h-4 ml-0.5" />
+                                </Button>
+                              </div>
                             </div>
-                          </div>
-                        </CardContent>
+                          </CardContent>
                         </Card>
                       );
                     })}

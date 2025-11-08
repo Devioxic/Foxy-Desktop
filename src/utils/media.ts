@@ -80,7 +80,9 @@ export const getImageUrl = (
       serverAddress,
       size,
       fallback: fallback ?? null,
-    }) || fallback || null
+    }) ||
+    fallback ||
+    null
   );
 };
 
