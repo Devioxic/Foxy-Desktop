@@ -1711,12 +1711,16 @@ export const getAllArtists = async () => {
       return allItems;
     }
 
-    const hardwareConcurrencyRaw = (globalThis as any)?.navigator?.hardwareConcurrency;
+    const hardwareConcurrencyRaw = (globalThis as any)?.navigator
+      ?.hardwareConcurrency;
     const hardwareConcurrency =
       typeof hardwareConcurrencyRaw === "number" && hardwareConcurrencyRaw > 0
         ? hardwareConcurrencyRaw
         : 4;
-    const maxWorkers = Math.min(8, Math.max(2, Math.floor(hardwareConcurrency / 2)));
+    const maxWorkers = Math.min(
+      8,
+      Math.max(2, Math.floor(hardwareConcurrency / 2))
+    );
     const workerCount = Math.min(maxWorkers, remainingStarts.length);
 
     const pageResults = new Map<number, any[]>();
@@ -1828,8 +1832,7 @@ export const getAllAlbums = async () => {
         startIndex += batchLength;
         const reachedReportedTotal =
           typeof page.total === "number" && startIndex >= page.total;
-        keepFetching =
-          !reachedReportedTotal && batchLength === pageSize;
+        keepFetching = !reachedReportedTotal && batchLength === pageSize;
       }
 
       return allItems;
@@ -1846,14 +1849,16 @@ export const getAllAlbums = async () => {
       return allItems;
     }
 
-    const hardwareConcurrencyRaw = (globalThis as any)?.navigator?.
-      hardwareConcurrency;
+    const hardwareConcurrencyRaw = (globalThis as any)?.navigator
+      ?.hardwareConcurrency;
     const hardwareConcurrency =
-      typeof hardwareConcurrencyRaw === "number" &&
-      hardwareConcurrencyRaw > 0
+      typeof hardwareConcurrencyRaw === "number" && hardwareConcurrencyRaw > 0
         ? hardwareConcurrencyRaw
         : 4;
-    const maxWorkers = Math.min(8, Math.max(2, Math.floor(hardwareConcurrency / 2)));
+    const maxWorkers = Math.min(
+      8,
+      Math.max(2, Math.floor(hardwareConcurrency / 2))
+    );
     const workerCount = Math.min(maxWorkers, remainingStarts.length);
 
     let nextIndex = 0;
@@ -1974,12 +1979,16 @@ export const getAllPlaylists = async () => {
       return allItems;
     }
 
-    const hardwareConcurrencyRaw = (globalThis as any)?.navigator?.hardwareConcurrency;
+    const hardwareConcurrencyRaw = (globalThis as any)?.navigator
+      ?.hardwareConcurrency;
     const hardwareConcurrency =
       typeof hardwareConcurrencyRaw === "number" && hardwareConcurrencyRaw > 0
         ? hardwareConcurrencyRaw
         : 4;
-    const maxWorkers = Math.min(6, Math.max(2, Math.floor(hardwareConcurrency / 2)));
+    const maxWorkers = Math.min(
+      6,
+      Math.max(2, Math.floor(hardwareConcurrency / 2))
+    );
     const workerCount = Math.min(maxWorkers, remainingStarts.length);
 
     const pageResults = new Map<number, any[]>();
