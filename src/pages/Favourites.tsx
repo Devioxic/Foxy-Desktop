@@ -7,7 +7,7 @@ import AlbumCard from "@/components/AlbumCard";
 import LoadingSkeleton from "@/components/LoadingSkeleton";
 import { Input } from "@/components/ui/input";
 import { Disc3, Search } from "lucide-react";
-import { getFavoriteAlbums } from "@/lib/jellyfin";
+import { hybridData } from "@/lib/sync";
 import { BaseItemDto } from "@jellyfin/sdk/lib/generated-client/models";
 import { useAuthData } from "@/hooks/useAuthData";
 import { logger } from "@/lib/logger";
@@ -62,13 +62,9 @@ const Favourites = () => {
         return;
       }
 
-      const albums = await getFavoriteAlbums(
-        authData.serverAddress,
-        authData.accessToken
-      );
-      const items = albums.Items || [];
-      setFavouriteAlbums(items);
-      setFilteredAlbums(items);
+      const albums = await hybridData.getFavoriteAlbums();
+      setFavouriteAlbums(albums as FavouriteAlbum[]);
+      setFilteredAlbums(albums as FavouriteAlbum[]);
     } catch (error) {
       logger.error("Failed to load favourite albums:", error);
     } finally {

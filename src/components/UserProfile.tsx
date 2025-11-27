@@ -29,10 +29,6 @@ const UserProfile = () => {
     JSON.parse(localStorage.getItem("authData") || "{}")
   );
 
-  useEffect(() => {
-    loadUserInfo();
-  }, []);
-
   const loadUserInfo = async () => {
     try {
       const [user, server] = await Promise.all([
@@ -55,6 +51,10 @@ const UserProfile = () => {
       logger.error("Failed to load user info", error);
     }
   };
+
+  useEffect(() => {
+    void loadUserInfo();
+  }, []);
 
   const handleSettingsClick = () => {
     navigate("/settings");

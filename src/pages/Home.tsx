@@ -7,15 +7,10 @@ import Sidebar from "@/components/Sidebar";
 import { useMusicPlayer } from "@/contexts/MusicContext";
 import { Play, Music } from "lucide-react";
 import { logger } from "@/lib/logger";
-import {
-  getRecentlyAdded,
-  getFavorites,
-  getRecentlyPlayedAlbums,
-} from "@/lib/jellyfin";
-import { getAlbumItems } from "@/lib/jellyfin";
 import AlbumCard from "@/components/AlbumCard";
 import LoadingSkeleton from "@/components/LoadingSkeleton";
 import { resolvePrimaryImageUrl } from "@/utils/media";
+import { hybridData } from "@/lib/sync";
 
 const Home = () => {
   const navigate = useNavigate();
@@ -40,19 +35,15 @@ const Home = () => {
         return;
       }
 
-      const [playedAlbums, added, favs] = await Promise.all([
-        getRecentlyPlayedAlbums(
-          authData.serverAddress,
-          authData.accessToken,
-          6
-        ),
-        getRecentlyAdded(authData.serverAddress, authData.accessToken),
-        getFavorites(authData.serverAddress, authData.accessToken),
+      const [playedAlbums, addedAlbums, favouriteAlbums] = await Promise.all([
+        hybridData.getRecentlyPlayedAlbums(6),
+        hybridData.getRecentlyAddedAlbums(12),
+        hybridData.getFavoriteAlbums(6),
       ]);
 
       setRecentlyPlayed(playedAlbums || []);
-      setRecentlyAdded(added.Items?.slice(0, 12) || []);
-      setFavorites(favs.Items?.slice(0, 6) || []);
+      setRecentlyAdded(addedAlbums || []);
+      setFavorites(favouriteAlbums || []);
     } catch (error) {
       logger.error("Failed to load music data", error);
     } finally {
@@ -149,12 +140,10 @@ const Home = () => {
                                   onClick={async (e) => {
                                     e.stopPropagation();
                                     try {
-                                      const res = await getAlbumItems(
-                                        authData.serverAddress,
-                                        authData.accessToken,
-                                        item.Id
-                                      );
-                                      const tracks = res?.Items || [];
+                                      const tracks =
+                                        await hybridData.getAlbumTracks(
+                                          item.Id
+                                        );
                                       if (tracks.length) {
                                         playQueue(tracks as any[], 0);
                                       }

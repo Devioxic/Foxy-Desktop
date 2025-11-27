@@ -9,7 +9,6 @@ import LoadingSkeleton from "@/components/LoadingSkeleton";
 import { useAuthData } from "@/hooks/useAuthData";
 import { getImageUrl } from "@/utils/media";
 import { Search, User, Users, ChevronLeft, ChevronRight } from "lucide-react";
-import { getAllArtists } from "@/lib/jellyfin";
 import { hybridData } from "@/lib/sync";
 import { BaseItemDto } from "@jellyfin/sdk/lib/generated-client/models";
 import BlurHashImage from "@/components/BlurHashImage";
@@ -82,12 +81,7 @@ const Artists = () => {
 
       console.time("ArtistsPage.loadArtists.total");
       // Fetch all artists with albums (local DB provides counts, then client paginates like Albums page)
-      const artistsData = await hybridData.getArtists(
-        undefined,
-        undefined,
-        false,
-        true
-      );
+      const artistsData = await hybridData.getArtists();
       logger.info(
         `ArtistsPage: received ${artistsData.length} artists with albums (unpaginated)`
       );

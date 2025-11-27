@@ -730,6 +730,64 @@ class LocalDatabase {
     return results.map((row) => this.rowToAlbum(row));
   }
 
+  async getRecentlyAddedAlbums(limit: number = 12): Promise<BaseItemDto[]> {
+    const normalizedLimit = Math.max(1, Math.floor(limit));
+    const results = this.exec(
+      `SELECT * FROM albums
+       ORDER BY 
+         CASE WHEN date_created IS NOT NULL AND date_created != '' THEN date_created ELSE '' END DESC,
+         updated_at DESC
+       LIMIT ?`,
+      [normalizedLimit]
+    );
+    return results.map((row) => this.rowToAlbum(row));
+  }
+
+  async getFavoriteAlbums(limit?: number): Promise<BaseItemDto[]> {
+    const baseSql = `SELECT * FROM albums
+      WHERE user_data LIKE '%"IsFavorite":true%'
+      ORDER BY updated_at DESC`;
+    const results = this.exec(
+      limit ? `${baseSql} LIMIT ${Math.max(1, Math.floor(limit))}` : baseSql
+    );
+    return results.map((row) => this.rowToAlbum(row));
+  }
+
+  async getRecentlyPlayedAlbums(limit: number = 6): Promise<BaseItemDto[]> {
+    const rows = this.exec(`SELECT * FROM albums`);
+    const albums = rows.map((row) => this.rowToAlbum(row));
+    const sorted = albums
+      .filter((album) => {
+        const lastPlayed = (album as any)?.UserData?.LastPlayedDate;
+        return typeof lastPlayed === "string" && lastPlayed.length > 0;
+      })
+      .sort((a, b) => {
+        const aDate = new Date(
+          (a as any)?.UserData?.LastPlayedDate || 0
+        ).getTime();
+        const bDate = new Date(
+          (b as any)?.UserData?.LastPlayedDate || 0
+        ).getTime();
+        return bDate - aDate;
+      });
+    return sorted.slice(0, Math.max(0, Math.floor(limit)) || 0);
+  }
+
+  async searchAlbums(query: string, limit?: number): Promise<BaseItemDto[]> {
+    if (!query.trim()) return [];
+    const escapeLike = (value: string) =>
+      value.replace(/[\\%_]/g, (match) => `\\${match}`);
+    const pattern = `%${escapeLike(query)}%`;
+    const sql = `SELECT * FROM albums
+      WHERE name LIKE ? ESCAPE '\\' OR album_artists LIKE ? ESCAPE '\\'
+      ORDER BY name COLLATE NOCASE`;
+    const limitedSql = limit
+      ? `${sql} LIMIT ${Math.max(1, Math.floor(limit))}`
+      : sql;
+    const results = this.exec(limitedSql, [pattern, pattern]);
+    return results.map((row) => this.rowToAlbum(row));
+  }
+
   async getAlbumById(id: string): Promise<BaseItemDto | null> {
     const results = this.exec("SELECT * FROM albums WHERE id = ?", [id]);
     return results.length > 0 ? this.rowToAlbum(results[0]) : null;
@@ -1117,6 +1175,21 @@ class LocalDatabase {
     const results = this.exec(
       "SELECT * FROM playlists ORDER BY name COLLATE NOCASE"
     );
+    return results.map((row) => this.rowToPlaylist(row));
+  }
+
+  async searchPlaylists(query: string, limit?: number): Promise<BaseItemDto[]> {
+    if (!query.trim()) return [];
+    const escapeLike = (value: string) =>
+      value.replace(/[\\%_]/g, (match) => `\\${match}`);
+    const pattern = `%${escapeLike(query)}%`;
+    const sql = `SELECT * FROM playlists
+      WHERE name LIKE ? ESCAPE '\\'
+      ORDER BY name COLLATE NOCASE`;
+    const limitedSql = limit
+      ? `${sql} LIMIT ${Math.max(1, Math.floor(limit))}`
+      : sql;
+    const results = this.exec(limitedSql, [pattern]);
     return results.map((row) => this.rowToPlaylist(row));
   }
 

@@ -76,6 +76,8 @@ const BlurHashImage: React.FC<BlurHashImageProps> = ({
       <img
         src={src}
         alt={alt}
+        loading="lazy"
+        decoding="async"
         onLoad={handleImageLoad}
         onError={handleImageError}
         className={`w-full h-full object-cover transition-opacity duration-300 ${

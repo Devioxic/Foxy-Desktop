@@ -8,7 +8,6 @@ import LoadingSkeleton from "@/components/LoadingSkeleton";
 import AlbumCard from "@/components/AlbumCard";
 import { useAuthData } from "@/hooks/useAuthData";
 import { Search, Music, Disc, ChevronLeft, ChevronRight } from "lucide-react";
-import { getAllAlbums } from "@/lib/jellyfin";
 import { hybridData } from "@/lib/sync";
 import { BaseItemDto } from "@jellyfin/sdk/lib/generated-client/models";
 

@@ -13,8 +13,8 @@ import TrackList from "@/components/TrackList";
 import BlurHashImage from "@/components/BlurHashImage";
 import { useMusicPlayer } from "@/contexts/MusicContext";
 import { Music, User, Disc3, ListMusic } from "lucide-react";
-import { searchWithRelatedContent, findArtistByName } from "@/lib/jellyfin";
-import { BaseItemDto } from "@jellyfin/sdk/lib/generated-client";
+import { hybridData } from "@/lib/sync";
+import { BaseItemDto } from "@jellyfin/sdk/lib/generated-client/models";
 import { formatDuration, resolvePrimaryImageUrl } from "@/utils/media";
 
 const SearchPage: React.FC = () => {
@@ -61,16 +61,14 @@ const SearchPage: React.FC = () => {
     setHasSearched(true);
 
     try {
-      const searchResults = await searchWithRelatedContent(searchTerm);
+      const searchResults = await hybridData.searchLibrary(searchTerm);
 
-      const categorized = {
-        songs: searchResults.filter((item) => item.Type === "Audio"),
-        artists: searchResults.filter((item) => item.Type === "MusicArtist"),
-        albums: searchResults.filter((item) => item.Type === "MusicAlbum"),
-        playlists: searchResults.filter((item) => item.Type === "Playlist"),
-      };
-
-      setResults(categorized);
+      setResults({
+        songs: searchResults.tracks,
+        artists: searchResults.artists,
+        albums: searchResults.albums,
+        playlists: searchResults.playlists,
+      });
     } catch (error) {
       logger.error("Search failed:", error);
     } finally {
@@ -84,16 +82,24 @@ const SearchPage: React.FC = () => {
       return;
     }
 
-    const artist = await findArtistByName(artistName);
-    if (artist?.Id) {
-      navigate(`/artist/${artist.Id}?q=${encodeURIComponent(query)}`);
-    } else {
-      navigate(
-        `/artist/${encodeURIComponent(artistName)}?q=${encodeURIComponent(
-          query
-        )}`
+    try {
+      const matches = await hybridData.searchArtists(artistName);
+      const directMatch = matches.find(
+        (artist) =>
+          artist.Name?.toLowerCase() === artistName.toLowerCase() && artist.Id
       );
+      const fallback = matches.find((artist) => artist.Id);
+      const target = directMatch || fallback;
+      if (target?.Id) {
+        navigate(`/artist/${target.Id}?q=${encodeURIComponent(query)}`);
+        return;
+      }
+    } catch (error) {
+      logger.warn("Local artist lookup failed", error);
     }
+    navigate(
+      `/artist/${encodeURIComponent(artistName)}?q=${encodeURIComponent(query)}`
+    );
   };
 
   const handleArtistByName = async (artistName: string) => {

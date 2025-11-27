@@ -9,9 +9,59 @@ import {
   getArtistInfo,
   getPlaylistItems,
   getPlaylistInfo,
+  getRecentlyPlayedAlbums,
+  searchWithRelatedContent,
 } from "./jellyfin";
 import { BaseItemDto } from "@jellyfin/sdk/lib/generated-client/models";
 import { logger } from "./logger";
+
+const TRACK_BATCH_SIZE = 200;
+
+const getHardwareConcurrency = (): number => {
+  const raw = (globalThis as any)?.navigator?.hardwareConcurrency;
+  return typeof raw === "number" && raw > 0 ? raw : 4;
+};
+
+const computeWorkerCount = (
+  totalJobs: number,
+  { max = 8, min = 2 }: { max?: number; min?: number } = {}
+): number => {
+  if (totalJobs <= 0) return 0;
+  const hc = getHardwareConcurrency();
+  const suggested = Math.floor(hc / 2) || min;
+  const capped = Math.min(Math.max(min, suggested), max);
+  return Math.max(1, Math.min(totalJobs, capped));
+};
+
+const createBatchSaver = <T>(
+  batchSize: number,
+  flush: (items: T[]) => Promise<void>
+) => {
+  let buffer: T[] = [];
+  let flushChain: Promise<void> = Promise.resolve();
+
+  const scheduleFlush = (items: T[]) => {
+    flushChain = flushChain.then(() => flush(items));
+  };
+
+  return {
+    push(items: T[]) {
+      if (!items.length) return;
+      buffer.push(...items);
+      if (buffer.length >= batchSize) {
+        const toFlush = buffer.splice(0, buffer.length);
+        scheduleFlush(toFlush);
+      }
+    },
+    async flushAll() {
+      if (buffer.length) {
+        const remaining = buffer.splice(0, buffer.length);
+        scheduleFlush(remaining);
+      }
+      await flushChain;
+    },
+  };
+};
 
 export interface SyncProgress {
   stage: "artists" | "albums" | "tracks" | "playlists" | "complete";
@@ -76,22 +126,41 @@ class SyncService {
       });
 
       const artists = await getAllArtists();
+      const artistsWithChildCount = artists.filter((artist: any) => {
+        const childCount = artist?.ChildCount;
+        return typeof childCount === "number" && childCount > 0;
+      });
 
-      if (artists.length > 0) {
+      const excludedArtists = artists.length - artistsWithChildCount.length;
+      if (excludedArtists > 0) {
+        logger.info(
+          `SyncService: Excluding ${excludedArtists} artists without ChildCount data`
+        );
+      }
+
+      if (artistsWithChildCount.length > 0) {
         notifyProgress({
           stage: "artists",
           current: 0,
-          total: artists.length,
+          total: artistsWithChildCount.length,
           message: "Saving artists to local database...",
         });
 
-        await localDb.saveArtists(artists);
+        await localDb.saveArtists(artistsWithChildCount);
 
         notifyProgress({
           stage: "artists",
-          current: artists.length,
-          total: artists.length,
+          current: artistsWithChildCount.length,
+          total: artistsWithChildCount.length,
           message: "Artists synchronized successfully",
+        });
+      } else if (excludedArtists > 0) {
+        notifyProgress({
+          stage: "artists",
+          current: 0,
+          total: 0,
+          message:
+            "Skipped syncing artists because none reported album child counts",
         });
       }
 
@@ -138,45 +207,78 @@ class SyncService {
         message: "Fetching tracks for albums...",
       });
 
-      let allTracks: BaseItemDto[] = [];
-      let processedAlbums = 0;
-
-      for (const album of albums) {
-        if (this.abortController?.signal.aborted) {
-          throw new Error("Sync was aborted");
-        }
-
-        try {
-          const albumTracksResult = await getAlbumItems(
-            authData.serverAddress,
-            authData.accessToken,
-            album.Id!
-          );
-          if (albumTracksResult?.Items?.length > 0) {
-            allTracks = [...allTracks, ...albumTracksResult.Items];
+      if (albums.length > 0) {
+        const workerCount = computeWorkerCount(albums.length);
+        const trackSaver = createBatchSaver<BaseItemDto>(
+          TRACK_BATCH_SIZE,
+          async (batch) => {
+            await localDb.saveTracks(batch);
           }
-        } catch (error) {
-          logger.warn(`Failed to fetch tracks for album ${album.Name}:`, error);
-        }
+        );
 
-        processedAlbums++;
-        notifyProgress({
-          stage: "tracks",
-          current: processedAlbums,
-          total: albums.length,
-          message: `Processing album ${processedAlbums}/${albums.length}: ${album.Name}`,
+        let nextAlbumIndex = 0;
+        let processedAlbums = 0;
+
+        const workers = Array.from({ length: workerCount }, async () => {
+          for (
+            let albumIndex = nextAlbumIndex++;
+            albumIndex < albums.length;
+            albumIndex = nextAlbumIndex++
+          ) {
+            if (this.abortController?.signal.aborted) {
+              throw new Error("Sync was aborted");
+            }
+
+            const album = albums[albumIndex];
+            const albumName = album?.Name || "Unknown Album";
+
+            if (!album?.Id) {
+              processedAlbums++;
+              notifyProgress({
+                stage: "tracks",
+                current: processedAlbums,
+                total: albums.length,
+                message: `Skipping album without ID (${processedAlbums}/${albums.length})`,
+              });
+              continue;
+            }
+
+            try {
+              const albumTracksResult = await getAlbumItems(
+                authData.serverAddress,
+                authData.accessToken,
+                album.Id
+              );
+              const items = albumTracksResult?.Items || [];
+              if (items.length) {
+                trackSaver.push(items);
+              }
+            } catch (error) {
+              logger.warn(
+                `Failed to fetch tracks for album ${albumName}:`,
+                error
+              );
+            }
+
+            processedAlbums++;
+            notifyProgress({
+              stage: "tracks",
+              current: processedAlbums,
+              total: albums.length,
+              message: `Processing album ${processedAlbums}/${albums.length}: ${albumName}`,
+            });
+          }
         });
 
-        // Save tracks in batches to prevent memory issues
-        if (allTracks.length >= 100) {
-          await localDb.saveTracks(allTracks);
-          allTracks = [];
-        }
-      }
-
-      // Save remaining tracks
-      if (allTracks.length > 0) {
-        await localDb.saveTracks(allTracks);
+        await Promise.all(workers);
+        await trackSaver.flushAll();
+      } else {
+        notifyProgress({
+          stage: "tracks",
+          current: 0,
+          total: 0,
+          message: "No albums available for track synchronization",
+        });
       }
 
       // Recompute counts now that tracks are saved
@@ -190,7 +292,6 @@ class SyncService {
 
       // Update sync metadata
       await localDb.setSyncMetadata("lastFullSync", Date.now().toString());
-      await this.syncPlaylistsWithItems(notifyProgress);
 
       await localDb.setSyncMetadata(
         "lastIncrementalSync",
@@ -282,7 +383,12 @@ class SyncService {
           total: changedAlbums.length,
           message: "Refreshing tracks for changed albums...",
         });
-        let allTracks: BaseItemDto[] = [];
+        const trackSaver = createBatchSaver<BaseItemDto>(
+          TRACK_BATCH_SIZE,
+          async (batch) => {
+            await localDb.saveTracks(batch);
+          }
+        );
         let processedAlbums = 0;
         for (const album of changedAlbums) {
           if (this.abortController?.signal.aborted) {
@@ -295,7 +401,7 @@ class SyncService {
               album.Id!
             );
             if (albumTracksResult?.Items?.length) {
-              allTracks = [...allTracks, ...albumTracksResult.Items];
+              trackSaver.push(albumTracksResult.Items);
             }
           } catch (e) {
             logger.warn(
@@ -311,12 +417,8 @@ class SyncService {
             total: changedAlbums.length,
             message: `Processed ${processedAlbums}/${changedAlbums.length}`,
           });
-          if (allTracks.length >= 200) {
-            await localDb.saveTracks(allTracks);
-            allTracks = [];
-          }
         }
-        if (allTracks.length) await localDb.saveTracks(allTracks);
+        await trackSaver.flushAll();
         try {
           await localDb.recomputeArtistCounts();
         } catch {}
@@ -406,80 +508,99 @@ class SyncService {
 
     await localDb.savePlaylists(playlists);
 
-    const concurrency = 3;
+    const playlistWorkerCount = computeWorkerCount(playlists.length, {
+      max: 6,
+      min: 2,
+    });
     let processed = 0;
-    let tracksBuffer: BaseItemDto[] = [];
+    let nextIndex = 0;
 
-    for (let i = 0; i < playlists.length; i += concurrency) {
-      if (this.abortController?.signal.aborted) {
-        throw new Error("Sync was aborted");
+    const trackSaver = createBatchSaver<BaseItemDto>(
+      TRACK_BATCH_SIZE,
+      async (batch) => {
+        await localDb.saveTracks(batch);
       }
+    );
 
-      const slice = playlists.slice(i, i + concurrency);
-      await Promise.all(
-        slice.map(async (playlist) => {
-          if (!playlist.Id) return;
-          try {
-            const items = await getPlaylistItems(playlist.Id);
-            const normalized = (items || []).filter((item) => item?.Id);
-            const totalTicks = normalized.reduce(
-              (acc, item) => acc + (item.RunTimeTicks || 0),
-              0
-            );
-            const entries = normalized.map((item, index) => {
-              const playlistItemId =
-                ((item as any).PlaylistItemId as string | undefined) ||
-                `${playlist.Id}:${item.Id}:${index}`;
-              return {
-                playlistItemId,
-                trackId: item.Id!,
-                sortIndex: index,
-              };
-            });
-            await localDb.replacePlaylistItems(playlist.Id, entries);
-            await localDb.updatePlaylistStats(
-              playlist.Id,
-              normalized.length,
-              totalTicks
-            );
+    const workers = Array.from({ length: playlistWorkerCount }, async () => {
+      for (
+        let playlistIndex = nextIndex++;
+        playlistIndex < playlists.length;
+        playlistIndex = nextIndex++
+      ) {
+        if (this.abortController?.signal.aborted) {
+          throw new Error("Sync was aborted");
+        }
 
-            const audioTracks = normalized.filter(
-              (item) => item.Type === "Audio" && item.Id
-            );
-            if (audioTracks.length) {
-              tracksBuffer.push(...audioTracks);
-              if (tracksBuffer.length >= 200) {
-                await localDb.saveTracks(tracksBuffer);
-                tracksBuffer = [];
-              }
-            }
-          } catch (error) {
-            logger.warn(
-              `Failed to fetch playlist items for ${playlist.Name || playlist.Id}`,
-              error
-            );
-            try {
-              await localDb.replacePlaylistItems(playlist.Id, []);
-              await localDb.updatePlaylistStats(playlist.Id, 0, 0);
-            } catch (dbError) {
-              logger.warn("Failed to clear cached playlist items", dbError);
-            }
+        const playlist = playlists[playlistIndex];
+        if (!playlist?.Id) {
+          processed++;
+          notifyProgress({
+            stage: "playlists",
+            current: processed,
+            total: playlists.length,
+            message: `Skipping playlist without ID (${processed}/${playlists.length})`,
+          });
+          continue;
+        }
+
+        try {
+          const items = (await getPlaylistItems(playlist.Id)) || [];
+          const normalized = items.filter(
+            (item): item is BaseItemDto => !!item?.Id
+          );
+          const totalTicks = normalized.reduce(
+            (acc, item) => acc + (item.RunTimeTicks || 0),
+            0
+          );
+          const entries = normalized.map((item, index) => {
+            const playlistItemId =
+              ((item as any).PlaylistItemId as string | undefined) ||
+              `${playlist.Id}:${item.Id}:${index}`;
+            return {
+              playlistItemId,
+              trackId: item.Id!,
+              sortIndex: index,
+            };
+          });
+          await localDb.replacePlaylistItems(playlist.Id, entries);
+          await localDb.updatePlaylistStats(
+            playlist.Id,
+            normalized.length,
+            totalTicks
+          );
+
+          const audioTracks = normalized.filter(
+            (item): item is BaseItemDto => item.Type === "Audio" && !!item.Id
+          );
+          if (audioTracks.length) {
+            trackSaver.push(audioTracks);
           }
-        })
-      );
+        } catch (error) {
+          logger.warn(
+            `Failed to fetch playlist items for ${playlist.Name || playlist.Id}`,
+            error
+          );
+          try {
+            await localDb.replacePlaylistItems(playlist.Id, []);
+            await localDb.updatePlaylistStats(playlist.Id, 0, 0);
+          } catch (dbError) {
+            logger.warn("Failed to clear cached playlist items", dbError);
+          }
+        }
 
-      processed += slice.length;
-      notifyProgress({
-        stage: "playlists",
-        current: processed,
-        total: playlists.length,
-        message: `Cached ${processed}/${playlists.length} playlists`,
-      });
-    }
+        processed++;
+        notifyProgress({
+          stage: "playlists",
+          current: processed,
+          total: playlists.length,
+          message: `Cached ${processed}/${playlists.length} playlists`,
+        });
+      }
+    });
 
-    if (tracksBuffer.length) {
-      await localDb.saveTracks(tracksBuffer);
-    }
+    await Promise.all(workers);
+    await trackSaver.flushAll();
 
     notifyProgress({
       stage: "playlists",
@@ -561,7 +682,7 @@ export class HybridDataService {
     limit?: number,
     offset?: number,
     forceOnline: boolean = false,
-    onlyWithAlbums: boolean = false
+    onlyWithAlbums: boolean = true
   ): Promise<BaseItemDto[]> {
     const preferLocal =
       !forceOnline && (this.useLocalFirst || this.offlineModeActive);
@@ -683,6 +804,150 @@ export class HybridDataService {
     const serverAlbums = await getAllAlbums();
 
     return serverAlbums;
+  }
+
+  async getRecentlyAddedAlbums(
+    limit = 12,
+    forceOnline: boolean = false
+  ): Promise<BaseItemDto[]> {
+    const preferLocal =
+      !forceOnline && (this.useLocalFirst || this.offlineModeActive);
+    if (preferLocal) {
+      try {
+        await localDb.initialize();
+        const local = await localDb.getRecentlyAddedAlbums(limit);
+        if (local.length > 0 || this.offlineModeActive) {
+          return local;
+        }
+      } catch (error) {
+        logger.warn(
+          "Failed to get recently added albums from local database",
+          error
+        );
+      }
+    }
+
+    if (this.offlineModeActive) {
+      return [];
+    }
+
+    const all = await getAllAlbums();
+    if (all.length) {
+      await localDb.saveAlbums(all);
+    }
+    await localDb.initialize();
+    return await localDb.getRecentlyAddedAlbums(limit);
+  }
+
+  async getFavoriteAlbums(
+    limit?: number,
+    forceOnline: boolean = false
+  ): Promise<BaseItemDto[]> {
+    const preferLocal =
+      !forceOnline && (this.useLocalFirst || this.offlineModeActive);
+    if (preferLocal) {
+      try {
+        await localDb.initialize();
+        const local = await localDb.getFavoriteAlbums(limit);
+        if (local.length > 0 || this.offlineModeActive) {
+          return local;
+        }
+      } catch (error) {
+        logger.warn(
+          "Failed to get favourite albums from local database",
+          error
+        );
+      }
+    }
+
+    if (this.offlineModeActive) {
+      return [];
+    }
+
+    const all = await getAllAlbums();
+    if (all.length) {
+      await localDb.saveAlbums(all);
+    }
+    const filtered = all.filter(
+      (album: any) => album?.UserData?.IsFavorite === true
+    );
+    if (filtered.length) {
+      await localDb.saveAlbums(filtered as BaseItemDto[]);
+    }
+    await localDb.initialize();
+    return await localDb.getFavoriteAlbums(limit);
+  }
+
+  async getRecentlyPlayedAlbums(
+    limit = 6,
+    forceOnline: boolean = false
+  ): Promise<BaseItemDto[]> {
+    const preferLocal =
+      !forceOnline && (this.useLocalFirst || this.offlineModeActive);
+    if (preferLocal) {
+      try {
+        await localDb.initialize();
+        const local = await localDb.getRecentlyPlayedAlbums(limit);
+        if (local.length > 0 || this.offlineModeActive) {
+          return local;
+        }
+      } catch (error) {
+        logger.warn(
+          "Failed to get recently played albums from local database",
+          error
+        );
+      }
+    }
+
+    if (this.offlineModeActive) {
+      return [];
+    }
+
+    const authData = JSON.parse(localStorage.getItem("authData") || "{}");
+    if (!authData.serverAddress || !authData.accessToken) {
+      return [];
+    }
+
+    const remote = await getRecentlyPlayedAlbums(
+      authData.serverAddress,
+      authData.accessToken,
+      Math.max(limit * 2, limit)
+    );
+
+    await localDb.initialize();
+    const resolved: BaseItemDto[] = [];
+    for (const entry of remote) {
+      if (!entry?.Id) continue;
+      let album = await localDb.getAlbumById(entry.Id);
+      if (!album) {
+        try {
+          const full = await getAlbumInfo(
+            authData.serverAddress,
+            authData.accessToken,
+            entry.Id
+          );
+          if (full) {
+            await localDb.saveAlbums([full]);
+            album = (await localDb.getAlbumById(
+              entry.Id
+            )) as BaseItemDto | null;
+          }
+        } catch (error) {
+          logger.warn(
+            "Failed to fetch album info for recently played entry",
+            error
+          );
+        }
+      }
+      if (album) {
+        resolved.push(album);
+      }
+      if (resolved.length >= limit) break;
+    }
+    if (resolved.length >= limit) {
+      return resolved.slice(0, limit);
+    }
+    return await localDb.getRecentlyPlayedAlbums(limit);
   }
 
   async getAlbumById(
@@ -1007,6 +1272,90 @@ export class HybridDataService {
       logger.warn("Track search failed", e);
       return [];
     }
+  }
+
+  async searchLibrary(
+    query: string,
+    forceOnline: boolean = false
+  ): Promise<{
+    albums: BaseItemDto[];
+    artists: BaseItemDto[];
+    tracks: BaseItemDto[];
+    playlists: BaseItemDto[];
+  }> {
+    const preferLocal =
+      !forceOnline && (this.useLocalFirst || this.offlineModeActive);
+
+    const gatherLocal = async () => {
+      await localDb.initialize();
+      const [albums, artists, tracks, playlists] = await Promise.all([
+        localDb.searchAlbums(query, 80),
+        localDb.searchArtists(query),
+        localDb.searchTracks(query),
+        localDb.searchPlaylists(query, 40),
+      ]);
+      return { albums, artists, tracks, playlists };
+    };
+
+    if (preferLocal) {
+      try {
+        const localResults = await gatherLocal();
+        const hasResults =
+          localResults.albums.length +
+            localResults.artists.length +
+            localResults.tracks.length +
+            localResults.playlists.length >
+          0;
+        if (hasResults || this.offlineModeActive) {
+          return localResults;
+        }
+      } catch (error) {
+        logger.warn("Local library search failed", error);
+      }
+    }
+
+    if (this.offlineModeActive) {
+      return {
+        albums: [],
+        artists: [],
+        tracks: [],
+        playlists: [],
+      };
+    }
+
+    const remote = await searchWithRelatedContent(query, {
+      forceRemote: true,
+    });
+    const albumsRemote = remote.filter(
+      (item: any) => item?.Type === "MusicAlbum"
+    );
+    const artistsRemote = remote.filter(
+      (item: any) => item?.Type === "MusicArtist"
+    );
+    const tracksRemote = remote.filter((item: any) => item?.Type === "Audio");
+    const playlistsRemote = remote.filter(
+      (item: any) => item?.Type === "Playlist"
+    );
+
+    try {
+      await localDb.initialize();
+      if (albumsRemote.length) {
+        await localDb.saveAlbums(albumsRemote as BaseItemDto[]);
+      }
+      if (artistsRemote.length) {
+        await localDb.saveArtists(artistsRemote as BaseItemDto[]);
+      }
+      if (tracksRemote.length) {
+        await localDb.saveTracks(tracksRemote as BaseItemDto[]);
+      }
+      if (playlistsRemote.length) {
+        await localDb.savePlaylists(playlistsRemote as BaseItemDto[]);
+      }
+    } catch (error) {
+      logger.warn("Failed to persist remote search results locally", error);
+    }
+
+    return gatherLocal();
   }
 }
 

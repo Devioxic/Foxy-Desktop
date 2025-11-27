@@ -1,10 +1,13 @@
 import { Jellyfin } from "@jellyfin/sdk";
+import type { BaseItemDto } from "@jellyfin/sdk/lib/generated-client/models";
 import { logger } from "./logger";
+import { localDb } from "./database";
 import { getSystemApi } from "@jellyfin/sdk/lib/utils/api/system-api";
 import { getQuickConnectApi } from "@jellyfin/sdk/lib/utils/api/quick-connect-api";
 import { getLibraryApi } from "@jellyfin/sdk/lib/utils/api/library-api";
 import { getUserApi } from "@jellyfin/sdk/lib/utils/api/user-api";
 import { getItemsApi } from "@jellyfin/sdk/lib/utils/api/items-api";
+import { getArtistsApi } from "@jellyfin/sdk/lib/utils/api/artists-api";
 import { getUserLibraryApi } from "@jellyfin/sdk/lib/utils/api/user-library-api";
 import { getPlaylistsApi } from "@jellyfin/sdk/lib/utils/api/playlists-api";
 import { getMediaInfoApi } from "@jellyfin/sdk/lib/utils/api/media-info-api";
@@ -240,21 +243,56 @@ export const getMusicLibraryItems = async (
 ) => {
   const api = jellyfin.createApi(serverAddress, accessToken);
   const itemsApi = getItemsApi(api);
-  const response = await itemsApi.getItems({
-    recursive: true,
-    includeItemTypes: [
-      BaseItemKind.Audio,
-      BaseItemKind.MusicAlbum,
-      BaseItemKind.MusicArtist,
-      BaseItemKind.Playlist,
-    ],
-    sortBy: [ItemSortBy.SortName],
-    sortOrder: [SortOrder.Ascending],
-    fields: [ItemFields.PrimaryImageAspectRatio, ItemFields.MediaSourceCount],
-    imageTypeLimit: 1,
-    enableImageTypes: [ImageType.Primary],
-  });
-  return response.data;
+  const artistsApi = getArtistsApi(api);
+
+  const [itemResponse, artistResponse] = await Promise.all([
+    itemsApi.getItems({
+      recursive: true,
+      includeItemTypes: [
+        BaseItemKind.Audio,
+        BaseItemKind.MusicAlbum,
+        BaseItemKind.Playlist,
+      ],
+      sortBy: [ItemSortBy.SortName],
+      sortOrder: [SortOrder.Ascending],
+      fields: [ItemFields.PrimaryImageAspectRatio, ItemFields.MediaSourceCount],
+      imageTypeLimit: 1,
+      enableImageTypes: [ImageType.Primary],
+    }),
+    artistsApi
+      .getArtists({
+        recursive: true,
+        sortBy: [ItemSortBy.SortName],
+        sortOrder: [SortOrder.Ascending],
+        fields: [
+          ItemFields.PrimaryImageAspectRatio,
+          ItemFields.MediaSourceCount,
+        ],
+        imageTypeLimit: 1,
+        enableImageTypes: [ImageType.Primary],
+      } as any)
+      .catch(() => ({ data: { Items: [] as any[], TotalRecordCount: 0 } })),
+  ]);
+
+  const mergedItems = [
+    ...(itemResponse.data.Items || []),
+    ...(artistResponse.data?.Items || []),
+  ];
+
+  const mergedResponse = {
+    ...itemResponse.data,
+    Items: mergedItems,
+  } as any;
+
+  if (
+    typeof itemResponse.data.TotalRecordCount === "number" &&
+    typeof artistResponse.data?.TotalRecordCount === "number"
+  ) {
+    mergedResponse.TotalRecordCount =
+      itemResponse.data.TotalRecordCount + artistResponse.data.TotalRecordCount;
+  }
+
+  return mergedResponse;
 };
 
 export const getRecentlyPlayed = async (
@@ -392,39 +430,16 @@ export const getFavorites = async (
   return response.data;
 };
 
-export const getFavoriteAlbums = async (
-  serverAddress: string,
-  accessToken: string
-) => {
-  const api = jellyfin.createApi(serverAddress, accessToken);
-  const itemsApi = getItemsApi(api);
-  const authData = JSON.parse(localStorage.getItem("authData") || "{}");
-  const response = await itemsApi.getItems({
-    userId: authData.userId,
-    filters: ["IsFavorite"],
-    recursive: true,
-    includeItemTypes: [BaseItemKind.MusicAlbum],
-    sortBy: [ItemSortBy.SortName],
-    sortOrder: [SortOrder.Ascending],
-    fields: [ItemFields.PrimaryImageAspectRatio, ItemFields.MediaSourceCount],
-    imageTypeLimit: 1,
-    enableImageTypes: [ImageType.Primary],
-  });
-  return response.data;
-};
-
 export const getFavoriteArtists = async (
   serverAddress: string,
   accessToken: string
 ) => {
   const api = jellyfin.createApi(serverAddress, accessToken);
-  const itemsApi = getItemsApi(api);
+  const artistsApi = getArtistsApi(api);
   const authData = JSON.parse(localStorage.getItem("authData") || "{}");
-  const response = await itemsApi.getItems({
+  const response = await artistsApi.getArtists({
     userId: authData.userId,
     filters: ["IsFavorite"],
-    recursive: true,
-    includeItemTypes: [BaseItemKind.MusicArtist],
     sortBy: [ItemSortBy.SortName],
     sortOrder: [SortOrder.Ascending],
     fields: [ItemFields.PrimaryImageAspectRatio, ItemFields.MediaSourceCount],
@@ -732,8 +747,10 @@ export const getAlbumItems = async (
   try {
     const api = jellyfin.createApi(serverAddress, accessToken);
     const itemsApi = getItemsApi(api);
+    const authData = JSON.parse(localStorage.getItem("authData") || "{}");
 
     const response = await itemsApi.getItems({
+      userId: authData.userId,
       parentId: albumId,
       includeItemTypes: [BaseItemKind.Audio],
       recursive: true,
@@ -744,6 +761,7 @@ export const getAlbumItems = async (
         ItemFields.Genres,
         ItemFields.DateCreated,
       ],
+      enableUserData: true,
     });
 
     return response.data;
@@ -768,11 +786,18 @@ export const searchItems = async (
       authData.accessToken
     );
     const itemsApi = getItemsApi(api);
+    const artistsApi = getArtistsApi(api);
 
-    const response = await itemsApi.getItems({
+    const wantsArtists =
+      includeItemTypes.length === 0 ||
+      includeItemTypes.includes(BaseItemKind.MusicArtist);
+    const nonArtistTypes = includeItemTypes.filter(
+      (type) => type !== BaseItemKind.MusicArtist
+    );
+
+    const itemQuery: any = {
       userId: authData.userId,
-      searchTerm: searchTerm,
-      includeItemTypes: includeItemTypes,
+      searchTerm,
       recursive: true,
       fields: [
         ItemFields.PrimaryImageAspectRatio,
@@ -782,10 +807,62 @@ export const searchItems = async (
         ItemFields.DateCreated,
         ItemFields.Overview,
       ],
-      limit: 200, // Increased limit for better results
-    });
+      limit: 200,
+    };
 
-    return response.data.Items || [];
+    if (nonArtistTypes.length) {
+      itemQuery.includeItemTypes = nonArtistTypes;
+    }
+
+    const itemsPromise =
+      includeItemTypes.length === 0 || nonArtistTypes.length
+        ? itemsApi
+            .getItems(itemQuery)
+            .then((res) => res.data.Items || [])
+            .catch(() => [] as any[])
+        : Promise.resolve([] as any[]);
+
+    const artistPromise = wantsArtists
+      ? artistsApi
+          .getArtists({
+            userId: authData.userId,
+            searchTerm,
+            fields: [
+              ItemFields.PrimaryImageAspectRatio,
+              ItemFields.MediaSourceCount,
+              ItemFields.Path,
+              ItemFields.Genres,
+              ItemFields.DateCreated,
+              ItemFields.Overview,
+            ],
+            limit: 200,
+            enableTotalRecordCount: false,
+          } as any)
+          .then((res) => res.data.Items || [])
+          .catch(() => [] as any[])
+      : Promise.resolve([] as any[]);
+
+    const [itemResults, artistResults] = await Promise.all([
+      itemsPromise,
+      artistPromise,
+    ]);
+
+    const merged = [...itemResults, ...artistResults];
+    const seen = new Set<string>();
+    const deduped: any[] = [];
+
+    for (const entry of merged) {
+      const id = entry?.Id;
+      if (id && seen.has(id)) {
+        continue;
+      }
+      if (id) {
+        seen.add(id);
+      }
+      deduped.push(entry);
+    }
+
+    return deduped;
   } catch (error) {
     logger.error("Error searching items:", error);
     throw error;
@@ -869,7 +946,49 @@ export const getItemsUserDataMap = async (
 };
 
 // Enhanced search function that searches multiple categories
-export const searchAllItems = async (searchTerm: string) => {
+export const searchAllItems = async (
+  searchTerm: string,
+  options: { forceRemote?: boolean } = {}
+) => {
+  const { forceRemote = false } = options;
+
+  const dedupe = (items: BaseItemDto[]): BaseItemDto[] => {
+    const seen = new Map<string, BaseItemDto>();
+    for (const item of items) {
+      const id = item?.Id;
+      if (!id) continue;
+      if (!seen.has(id)) {
+        seen.set(id, item);
+      }
+    }
+    return Array.from(seen.values());
+  };
+
+  if (!forceRemote) {
+    try {
+      await localDb.initialize();
+      const [artists, albums, tracks, playlists] = await Promise.all([
+        localDb.searchArtists(searchTerm),
+        localDb.searchAlbums(searchTerm),
+        localDb.searchTracks(searchTerm),
+        localDb.searchPlaylists(searchTerm),
+      ]);
+
+      const localCombined = dedupe([
+        ...artists,
+        ...albums,
+        ...tracks,
+        ...playlists,
+      ]);
+
+      if (localCombined.length) {
+        return localCombined;
+      }
+    } catch (error) {
+      logger.warn("Local search failed, falling back to server", error);
+    }
+  }
+
   try {
     const authData = JSON.parse(localStorage.getItem("authData") || "{}");
     if (!authData.serverAddress || !authData.accessToken || !authData.userId) {
@@ -881,41 +1000,56 @@ export const searchAllItems = async (searchTerm: string) => {
       authData.accessToken
     );
     const itemsApi = getItemsApi(api);
+    const artistsApi = getArtistsApi(api);
 
-    // First try a general search to catch everything
-    const generalSearch = await itemsApi.getItems({
-      userId: authData.userId,
-      searchTerm: searchTerm,
-      includeItemTypes: [
-        BaseItemKind.MusicArtist,
-        BaseItemKind.MusicAlbum,
-        BaseItemKind.Audio,
-        BaseItemKind.Playlist,
-      ],
-      recursive: true,
-      fields: [
-        ItemFields.PrimaryImageAspectRatio,
-        ItemFields.Overview,
-        ItemFields.Genres,
-        ItemFields.MediaSourceCount,
-      ],
-      limit: 300,
-      enableTotalRecordCount: false,
-    });
+    const [artistSearch, generalSearch] = await Promise.all([
+      artistsApi
+        .getArtists({
+          userId: authData.userId,
+          searchTerm,
+          fields: [
+            ItemFields.PrimaryImageAspectRatio,
+            ItemFields.Overview,
+            ItemFields.Genres,
+          ],
+          limit: 300,
+          enableTotalRecordCount: false,
+        } as any)
+        .catch(() => ({ data: { Items: [] as any[] } })),
+      itemsApi
+        .getItems({
+          userId: authData.userId,
+          searchTerm,
+          includeItemTypes: [
+            BaseItemKind.MusicAlbum,
+            BaseItemKind.Audio,
+            BaseItemKind.Playlist,
+          ],
+          recursive: true,
+          fields: [
+            ItemFields.PrimaryImageAspectRatio,
+            ItemFields.Overview,
+            ItemFields.Genres,
+            ItemFields.MediaSourceCount,
+          ],
+          limit: 300,
+          enableTotalRecordCount: false,
+        })
+        .catch(() => ({ data: { Items: [] as any[] } })),
+    ]);
 
-    let allResults = generalSearch.data.Items || [];
+    let allResults = [
+      ...(artistSearch.data.Items || []),
+      ...(generalSearch.data.Items || []),
+    ] as BaseItemDto[];
 
-    // If general search doesn't return much, try individual searches
     if (allResults.length < 10) {
       const [artistResults, albumResults, songResults, playlistResults] =
         await Promise.all([
-          // Search artists with broader terms
-          itemsApi
-            .getItems({
+          artistsApi
+            .getArtists({
               userId: authData.userId,
-              searchTerm: searchTerm,
-              includeItemTypes: [BaseItemKind.MusicArtist],
-              recursive: true,
+              searchTerm,
               fields: [
                 ItemFields.PrimaryImageAspectRatio,
                 ItemFields.Overview,
@@ -923,14 +1057,12 @@ export const searchAllItems = async (searchTerm: string) => {
               ],
               limit: 50,
               enableTotalRecordCount: false,
-            })
+            } as any)
             .catch(() => ({ data: { Items: [] as any[] } })),
-
-          // Search albums
           itemsApi
             .getItems({
               userId: authData.userId,
-              searchTerm: searchTerm,
+              searchTerm,
               includeItemTypes: [BaseItemKind.MusicAlbum],
               recursive: true,
               fields: [ItemFields.PrimaryImageAspectRatio, ItemFields.Genres],
@@ -938,12 +1070,10 @@ export const searchAllItems = async (searchTerm: string) => {
               enableTotalRecordCount: false,
             })
             .catch(() => ({ data: { Items: [] as any[] } })),
-
-          // Search songs
           itemsApi
             .getItems({
               userId: authData.userId,
-              searchTerm: searchTerm,
+              searchTerm,
               includeItemTypes: [BaseItemKind.Audio],
               recursive: true,
               fields: [
@@ -954,12 +1084,10 @@ export const searchAllItems = async (searchTerm: string) => {
               enableTotalRecordCount: false,
             })
             .catch(() => ({ data: { Items: [] as any[] } })),
-
-          // Search playlists
           itemsApi
             .getItems({
               userId: authData.userId,
-              searchTerm: searchTerm,
+              searchTerm,
               includeItemTypes: [BaseItemKind.Playlist],
               recursive: true,
               fields: [ItemFields.PrimaryImageAspectRatio, ItemFields.Overview],
@@ -969,16 +1097,42 @@ export const searchAllItems = async (searchTerm: string) => {
             .catch(() => ({ data: { Items: [] as any[] } })),
         ]);
 
-      // Combine all results
       allResults = [
         ...(artistResults.data.Items || []),
         ...(albumResults.data.Items || []),
         ...(songResults.data.Items || []),
         ...(playlistResults.data.Items || []),
-      ];
+      ] as BaseItemDto[];
     }
 
-    return allResults;
+    const deduped = dedupe(allResults);
+
+    if (deduped.length) {
+      try {
+        await localDb.initialize();
+        const artists = deduped.filter((item) => item.Type === "MusicArtist");
+        const albums = deduped.filter((item) => item.Type === "MusicAlbum");
+        const tracks = deduped.filter((item) => item.Type === "Audio");
+        const playlists = deduped.filter((item) => item.Type === "Playlist");
+
+        if (artists.length) {
+          await localDb.saveArtists(artists);
+        }
+        if (albums.length) {
+          await localDb.saveAlbums(albums);
+        }
+        if (tracks.length) {
+          await localDb.saveTracks(tracks);
+        }
+        if (playlists.length) {
+          await localDb.savePlaylists(playlists);
+        }
+      } catch (persistError) {
+        logger.warn("Failed to persist remote search results", persistError);
+      }
+    }
+
+    return deduped;
   } catch (error) {
     logger.error("Error searching all items:", error);
     throw error;
@@ -986,12 +1140,15 @@ export const searchAllItems = async (searchTerm: string) => {
 };
 
 // Enhanced search that includes related content for artists
-export const searchWithRelatedContent = async (searchTerm: string) => {
+export const searchWithRelatedContent = async (
+  searchTerm: string,
+  options: { forceRemote?: boolean } = {}
+) => {
   try {
     logger.info(`Searching for: "${searchTerm}"`);
 
     // First get all basic search results
-    const basicResults = await searchAllItems(searchTerm);
+    const basicResults = await searchAllItems(searchTerm, options);
     logger.info(
       `Basic search returned ${basicResults.length} results:`,
       basicResults.map((r) => `${r.Type}: ${r.Name}`)
@@ -1006,16 +1163,57 @@ export const searchWithRelatedContent = async (searchTerm: string) => {
       matchingArtists.map((a) => a.Name)
     );
 
-    // For each artist found, get their albums
+    // For each artist found, get their albums (prefer local, fallback to server)
     const artistAlbums = [];
     for (const artist of matchingArtists) {
       try {
-        const albums = await getAlbumsByArtistId(artist.Id!);
-        logger.info(
-          `Albums for ${artist.Name}:`,
-          albums.map((a) => a.Name)
-        );
-        artistAlbums.push(...albums);
+        let albums: BaseItemDto[] = [];
+        try {
+          await localDb.initialize();
+          albums = await localDb.getAlbumsByArtistId(artist.Id!);
+        } catch (dbError) {
+          logger.warn(
+            `Failed to read albums for ${artist.Name} from local database`,
+            dbError
+          );
+        }
+
+        if (!albums.length) {
+          const shouldForceRemote = options.forceRemote === true;
+          if (shouldForceRemote) {
+            albums = await getAlbumsByArtistId(artist.Id!);
+          } else {
+            try {
+              albums = await getAlbumsByArtistId(artist.Id!);
+            } catch (remoteError) {
+              logger.warn(
+                `Failed remote album fetch for artist ${artist.Name}:`,
+                remoteError
+              );
+              albums = [];
+            }
+          }
+
+          if (albums.length) {
+            try {
+              await localDb.initialize();
+              await localDb.saveAlbums(albums);
+            } catch (persistError) {
+              logger.warn(
+                `Failed to persist albums for ${artist.Name} after remote fetch`,
+                persistError
+              );
+            }
+          }
+        }
+
+        if (albums.length) {
+          logger.info(
+            `Albums for ${artist.Name}:`,
+            albums.map((a) => a.Name)
+          );
+          artistAlbums.push(...albums);
+        }
       } catch (error) {
         logger.warn(`Failed to get albums for artist ${artist.Name}:`, error);
       }
@@ -1036,7 +1234,7 @@ export const searchWithRelatedContent = async (searchTerm: string) => {
   } catch (error) {
     logger.error("Error in enhanced search:", error);
     // Fallback to basic search
-    return await searchAllItems(searchTerm);
+    return await searchAllItems(searchTerm, options);
   }
 };
 
@@ -1072,6 +1270,23 @@ export const getAlbumsByArtistId = async (artistId: string) => {
 };
 
 export const getArtistInfo = async (artistId: string) => {
+  let localArtist: BaseItemDto | null = null;
+  let dbReady = false;
+
+  try {
+    await localDb.initialize();
+    dbReady = true;
+    localArtist = await localDb.getArtistById(artistId);
+    const hasOverview =
+      typeof localArtist?.Overview === "string" &&
+      localArtist.Overview.trim().length > 0;
+    if (localArtist && hasOverview) {
+      return localArtist;
+    }
+  } catch (dbError) {
+    logger.warn("Failed to read artist from local database", dbError);
+  }
+
   try {
     const authData = JSON.parse(localStorage.getItem("authData") || "{}");
     if (!authData.serverAddress || !authData.accessToken || !authData.userId) {
@@ -1082,17 +1297,60 @@ export const getArtistInfo = async (artistId: string) => {
       authData.serverAddress,
       authData.accessToken
     );
-    const itemsApi = getItemsApi(api);
+    const artistsApi = getArtistsApi(api);
 
-    const response = await itemsApi.getItems({
+    const response = await artistsApi.getArtists({
       userId: authData.userId,
-      ids: [artistId],
-      includeItemTypes: [BaseItemKind.MusicArtist],
-      fields: [ItemFields.Overview],
-    });
+      parentId: artistId,
+      fields: [
+        ItemFields.PrimaryImageAspectRatio,
+        ItemFields.MediaSourceCount,
+        ItemFields.Path,
+        ItemFields.Genres,
+        ItemFields.DateCreated,
+        ItemFields.Overview,
+        ItemFields.ChildCount,
+        ItemFields.ItemCounts,
+      ],
+      enableUserData: true,
+      enableTotalRecordCount: false,
+    } as any);
 
-    return response.data.Items?.[0] || null;
+    const remoteArtist = (response.data.Items || [])[0] || null;
+    if (remoteArtist) {
+      if (!dbReady) {
+        try {
+          await localDb.initialize();
+          dbReady = true;
+        } catch (reInitError) {
+          logger.warn(
+            "Failed to re-initialize local database before persisting artist",
+            reInitError
+          );
+        }
+      }
+
+      if (dbReady) {
+        try {
+          await localDb.saveArtists([remoteArtist as BaseItemDto]);
+        } catch (persistError) {
+          logger.warn("Failed to persist artist info locally", persistError);
+        }
+      }
+
+      return remoteArtist;
+    }
+
+    return localArtist;
   } catch (error) {
+    if (localArtist) {
+      logger.warn(
+        "Falling back to cached artist info after remote fetch failure",
+        error
+      );
+      return localArtist;
+    }
+
     logger.error("Error getting artist info:", error);
     throw error;
   }
@@ -1242,19 +1500,17 @@ export const findArtistByName = async (artistName: string) => {
       authData.serverAddress,
       authData.accessToken
     );
-    const itemsApi = getItemsApi(api);
+    const artistsApi = getArtistsApi(api);
 
     const normalized = artistName.trim();
     const lower = normalized.toLowerCase();
 
     // Strategy: fetch a larger pool when commas present (compound names)
-    const response = await itemsApi.getItems({
+    const response = await artistsApi.getArtists({
       userId: authData.userId,
       searchTerm: normalized.includes(",")
         ? normalized.split(",")[0].trim()
         : normalized,
-      includeItemTypes: [BaseItemKind.MusicArtist],
-      recursive: true,
       fields: [
         ItemFields.PrimaryImageAspectRatio,
         ItemFields.MediaSourceCount,
@@ -1371,19 +1627,14 @@ export const getAllArtists = async () => {
       authData.serverAddress,
       authData.accessToken
     );
-    const itemsApi = getItemsApi(api);
+    const artistsApi = getArtistsApi(api);
 
     const pageSize = 500; // reasonable page size
-    let startIndex = 0;
-    let allItems: any[] = [];
-    let total = Infinity;
 
-    while (startIndex < total) {
+    const fetchPage = async (startIndex: number) => {
       const batchStart = performance.now?.() || Date.now();
-      const response = await itemsApi.getItems({
+      const response = await artistsApi.getArtists({
         userId: authData.userId,
-        includeItemTypes: [BaseItemKind.MusicArtist],
-        recursive: true,
         sortBy: [ItemSortBy.SortName],
         sortOrder: [SortOrder.Ascending],
         fields: [
@@ -1399,20 +1650,11 @@ export const getAllArtists = async () => {
         startIndex,
         limit: pageSize,
         enableTotalRecordCount: true,
+        enableUserData: true,
       });
       const batchTime = (performance.now?.() || Date.now()) - batchStart;
-
       const batch = response.data.Items || [];
-      allItems = allItems.concat(batch);
-      const totalRecordCount = response.data.TotalRecordCount;
-      if (typeof totalRecordCount === "number") {
-        total = totalRecordCount;
-      } else if (batch.length < pageSize) {
-        // total unknown but no more pages
-        total = startIndex + batch.length;
-      }
 
-      // Debug stats on counts availability
       const withAlbumCount = batch.filter(
         (a: any) => typeof a.AlbumCount === "number" && a.AlbumCount > 0
       ).length;
@@ -1428,18 +1670,88 @@ export const getAllArtists = async () => {
       logger.info(
         `Artists pagination: startIndex=${startIndex} fetched=${
           batch.length
-        } cumulative=${allItems.length}/${
-          total === Infinity ? "∞" : total
         } batchTime=${batchTime.toFixed(
           1
-        )}ms  albumCount>0:${withAlbumCount} childCount>0:${withChildCount} itemCountsAvail:${withItemCounts}`
+        )}ms albumCount>0:${withAlbumCount} childCount>0:${withChildCount} itemCountsAvail:${withItemCounts}`
       );
 
-      if (batch.length === 0) break;
-      startIndex += batch.length;
+      return {
+        items: batch,
+        total: response.data.TotalRecordCount,
+      };
+    };
+
+    const firstPage = await fetchPage(0);
+    const allItems: any[] = [...firstPage.items];
+    const firstTotal = firstPage.total;
+
+    if (typeof firstTotal !== "number") {
+      let startIndex = firstPage.items.length;
+      while (true) {
+        const page = await fetchPage(startIndex);
+        const batch = page.items;
+        if (!batch.length) break;
+        allItems.push(...batch);
+        startIndex += batch.length;
+        if (batch.length < pageSize) break;
+        if (typeof page.total === "number" && startIndex >= page.total) {
+          break;
+        }
+      }
+      return allItems;
     }
 
-    // Return all artists (filtering moved to UI layer where album data is available)
+    const total = firstTotal;
+    const remainingStarts: number[] = [];
+    for (let start = pageSize; start < total; start += pageSize) {
+      remainingStarts.push(start);
+    }
+
+    if (!remainingStarts.length) {
+      return allItems;
+    }
+
+    const hardwareConcurrencyRaw = (globalThis as any)?.navigator?.hardwareConcurrency;
+    const hardwareConcurrency =
+      typeof hardwareConcurrencyRaw === "number" && hardwareConcurrencyRaw > 0
+        ? hardwareConcurrencyRaw
+        : 4;
+    const maxWorkers = Math.min(8, Math.max(2, Math.floor(hardwareConcurrency / 2)));
+    const workerCount = Math.min(maxWorkers, remainingStarts.length);
+
+    const pageResults = new Map<number, any[]>();
+    let nextIndex = 0;
+
+    const worker = async () => {
+      for (
+        let idx = nextIndex++;
+        idx < remainingStarts.length;
+        idx = nextIndex++
+      ) {
+        const startIndex = remainingStarts[idx];
+        try {
+          const page = await fetchPage(startIndex);
+          if (page.items.length) {
+            pageResults.set(startIndex, page.items);
+          }
+        } catch (error) {
+          logger.warn(
+            `Failed to fetch artist page starting at ${startIndex}`,
+            error
+          );
+        }
+      }
+    };
+
+    await Promise.all(Array.from({ length: workerCount }, worker));
+
+    for (const startIndex of remainingStarts.sort((a, b) => a - b)) {
+      const batch = pageResults.get(startIndex);
+      if (batch?.length) {
+        allItems.push(...batch);
+      }
+    }
+
     return allItems;
   } catch (error) {
     logger.error("Error getting all artists:", error);
@@ -1462,11 +1774,8 @@ export const getAllAlbums = async () => {
     const itemsApi = getItemsApi(api);
 
     const pageSize = 500;
-    let startIndex = 0;
-    let allItems: any[] = [];
-    let total = Infinity;
-
-    while (startIndex < total) {
+    const fetchPage = async (startIndex: number) => {
+      const pageStart = performance.now?.() || Date.now();
       const response = await itemsApi.getItems({
         userId: authData.userId,
         includeItemTypes: [BaseItemKind.MusicAlbum],
@@ -1481,21 +1790,99 @@ export const getAllAlbums = async () => {
           ItemFields.DateCreated,
           ItemFields.Overview,
         ],
+        enableUserData: true,
         startIndex,
         limit: pageSize,
         enableTotalRecordCount: true,
       });
-
+      const pageTime = (performance.now?.() || Date.now()) - pageStart;
       const batch = response.data.Items || [];
-      allItems = allItems.concat(batch);
-      const totalRecordCount = response.data.TotalRecordCount;
-      if (typeof totalRecordCount === "number") {
-        total = totalRecordCount;
-      } else if (batch.length < pageSize) {
-        break;
+
+      logger.info(
+        `Albums pagination: startIndex=${startIndex} fetched=${batch.length} duration=${pageTime.toFixed(
+          1
+        )}ms`
+      );
+
+      return {
+        items: batch,
+        total: response.data.TotalRecordCount,
+      };
+    };
+
+    const firstPage = await fetchPage(0);
+    const allItems = [...firstPage.items];
+    const firstTotal = firstPage.total;
+
+    if (typeof firstTotal !== "number") {
+      // Fall back to sequential pagination when the server doesn't return totals
+      let startIndex = firstPage.items.length;
+      let keepFetching = true;
+      while (keepFetching) {
+        const page = await fetchPage(startIndex);
+        const batchLength = page.items.length;
+        if (!batchLength) {
+          break;
+        }
+        allItems.push(...page.items);
+        startIndex += batchLength;
+        const reachedReportedTotal =
+          typeof page.total === "number" && startIndex >= page.total;
+        keepFetching =
+          !reachedReportedTotal && batchLength === pageSize;
       }
-      if (batch.length === 0) break;
-      startIndex += batch.length;
+
+      return allItems;
+    }
+
+    const total = firstTotal;
+    const remainingStarts: number[] = [];
+    const pageResults = new Map<number, any[]>();
+    for (let start = pageSize; start < total; start += pageSize) {
+      remainingStarts.push(start);
+    }
+
+    if (!remainingStarts.length) {
+      return allItems;
+    }
+
+    const hardwareConcurrencyRaw = (globalThis as any)?.navigator?.
+      hardwareConcurrency;
+    const hardwareConcurrency =
+      typeof hardwareConcurrencyRaw === "number" &&
+      hardwareConcurrencyRaw > 0
+        ? hardwareConcurrencyRaw
+        : 4;
+    const maxWorkers = Math.min(8, Math.max(2, Math.floor(hardwareConcurrency / 2)));
+    const workerCount = Math.min(maxWorkers, remainingStarts.length);
+
+    let nextIndex = 0;
+    const worker = async () => {
+      let idx = nextIndex++;
+      while (idx < remainingStarts.length) {
+        const startIndex = remainingStarts[idx];
+        try {
+          const page = await fetchPage(startIndex);
+          if (page.items.length) {
+            pageResults.set(startIndex, page.items);
+          }
+        } catch (error) {
+          logger.warn(
+            `Failed to fetch album page starting at ${startIndex}`,
+            error
+          );
+        }
+        idx = nextIndex++;
+      }
+    };
+
+    await Promise.all(Array.from({ length: workerCount }, worker));
+
+    for (const startIndex of remainingStarts.sort((a, b) => a - b)) {
+      const batch = pageResults.get(startIndex);
+      if (batch && batch.length) {
+        allItems.push(...batch);
+      }
     }
 
     return allItems;
@@ -1520,11 +1907,9 @@ export const getAllPlaylists = async () => {
     const itemsApi = getItemsApi(api);
 
     const pageSize = 500;
-    let startIndex = 0;
-    let allItems: any[] = [];
-    let total = Infinity;
 
-    while (startIndex < total) {
+    const fetchPage = async (startIndex: number) => {
+      const pageStart = performance.now?.() || Date.now();
       const response = await itemsApi.getItems({
         userId: authData.userId,
         includeItemTypes: [BaseItemKind.Playlist],
@@ -1539,21 +1924,95 @@ export const getAllPlaylists = async () => {
           ItemFields.DateCreated,
           ItemFields.Overview,
         ],
+        enableUserData: true,
         startIndex,
         limit: pageSize,
         enableTotalRecordCount: true,
       });
-
+      const duration = (performance.now?.() || Date.now()) - pageStart;
       const batch = response.data.Items || [];
-      allItems = allItems.concat(batch);
-      const totalRecordCount = response.data.TotalRecordCount;
-      if (typeof totalRecordCount === "number") {
-        total = totalRecordCount;
-      } else if (batch.length < pageSize) {
-        break;
+
+      logger.info(
+        `Playlists pagination: startIndex=${startIndex} fetched=${batch.length} duration=${duration.toFixed(
+          1
+        )}ms`
+      );
+
+      return {
+        items: batch,
+        total: response.data.TotalRecordCount,
+      };
+    };
+
+    const firstPage = await fetchPage(0);
+    const allItems = [...firstPage.items];
+    const firstTotal = firstPage.total;
+
+    if (typeof firstTotal !== "number") {
+      let startIndex = firstPage.items.length;
+      while (true) {
+        const page = await fetchPage(startIndex);
+        const batch = page.items;
+        if (!batch.length) break;
+        allItems.push(...batch);
+        startIndex += batch.length;
+        if (batch.length < pageSize) break;
+        if (typeof page.total === "number" && startIndex >= page.total) {
+          break;
+        }
       }
-      if (batch.length === 0) break;
-      startIndex += batch.length;
+      return allItems;
+    }
+
+    const total = firstTotal;
+    const remainingStarts: number[] = [];
+    for (let start = pageSize; start < total; start += pageSize) {
+      remainingStarts.push(start);
+    }
+
+    if (!remainingStarts.length) {
+      return allItems;
+    }
+
+    const hardwareConcurrencyRaw = (globalThis as any)?.navigator?.hardwareConcurrency;
+    const hardwareConcurrency =
+      typeof hardwareConcurrencyRaw === "number" && hardwareConcurrencyRaw > 0
+        ? hardwareConcurrencyRaw
+        : 4;
+    const maxWorkers = Math.min(6, Math.max(2, Math.floor(hardwareConcurrency / 2)));
+    const workerCount = Math.min(maxWorkers, remainingStarts.length);
+
+    const pageResults = new Map<number, any[]>();
+    let nextIndex = 0;
+
+    const worker = async () => {
+      for (
+        let idx = nextIndex++;
+        idx < remainingStarts.length;
+        idx = nextIndex++
+      ) {
+        const startIndex = remainingStarts[idx];
+        try {
+          const page = await fetchPage(startIndex);
+          if (page.items.length) {
+            pageResults.set(startIndex, page.items);
+          }
+        } catch (error) {
+          logger.warn(
+            `Failed to fetch playlist page starting at ${startIndex}`,
+            error
+          );
+        }
+      }
+    };
+
+    await Promise.all(Array.from({ length: workerCount }, worker));
+
+    for (const startIndex of remainingStarts.sort((a, b) => a - b)) {
+      const batch = pageResults.get(startIndex);
+      if (batch?.length) {
+        allItems.push(...batch);
+      }
     }
 
     return allItems;
